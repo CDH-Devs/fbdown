@@ -2,9 +2,6 @@ name = "facebookdownbot"
 main = "index.mjs" 
 compatibility_date = "2025-10-12"
 
-compatibility_flags = ["nodejs_compat"]
-
-# ... (Other settings like name, main, etc.) ...
 
 [[kv_namespaces]]
 binding = "BOT_CONFIG"  # This is the variable name used in the JavaScript code (env.BOT_CONFIG)
