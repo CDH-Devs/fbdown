@@ -1,6 +1,6 @@
 // --- 1. Variables and Constants (ටෝකන සහ URL) ---
 
-// ********* මෙහි ඔබගේ සැබෑ ටෝකන ඇතුළත් කරන්න *********
+// ********* මෙහි ඔබගේ සැබෑ ටෝකන ඇතුළත් කර ඇත *********
 const BOT_TOKEN = "8382727460:AAEgKVISJN5TTuV4O-82sMGQDG3khwjiKR8"; 
 const WEBHOOK_SECRET = "ec6bc090856641e9b2aca785d7a34727"; 
 // ********************************************************
@@ -30,7 +30,6 @@ async function sendMessage(chat_id, text) {
 
 async function sendVideoFromUrl(chat_id, video_url, quality) {
     const url = `${TELEGRAM_API}${BOT_TOKEN}/sendVideo`;
-    // Python කේතයේ මෙන් දේශීයව ගොනු බාගත කිරීම වෙනුවට, අපි සෘජු සබැඳිය යවමු.
     const payload = {
         chat_id: chat_id,
         video: video_url, 
@@ -47,7 +46,7 @@ async function sendVideoFromUrl(chat_id, video_url, quality) {
 // --- 3. Facebook Video Downloader Logic (වීඩියෝ බාගත කිරීමේ තර්කය) ---
 
 /**
- * Facebook URL එකකින් බාගත කිරීමේ සබැඳි ලබා ගනී. (Python's f.get_links() වෙනුවට)
+ * Facebook URL එකකින් බාගත කිරීමේ සබැඳි ලබා ගනී.
  * ⚠️ මෙම ශ්‍රිතය ඔබගේ නව API එකේ JSON ප්‍රතිචාරයට අනුව සකස් කළ යුතුය.
  */
 async function getFbVideoLinks(videoUrl) {
@@ -70,8 +69,6 @@ async function getFbVideoLinks(videoUrl) {
             // SD සබැඳිය සෙවීම (360p හෝ SD)
             const sdLink = data.links.find(link => link.quality && (link.quality.toUpperCase() === 'SD' || link.quality.includes('360p')) && link.url)?.url;
 
-            // සටහන: ඔබගේ Python කේතයේ මෙන් 'duration' පරීක්ෂාව මෙහිදී සිදු කිරීමට අපහසුය.
-            // එම නිසා අපි සබැඳි පමණක් ආපසු ලබා දෙමු.
             return {
                 hd: hdLink,
                 sd: sdLink
