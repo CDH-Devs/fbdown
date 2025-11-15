@@ -15,13 +15,18 @@ export default {
       return new Response('Telegram Facebook Video Downloader Bot is running', { status: 200 });
     }
     
+    // Only handle POST requests for webhook
+    if (request.method !== 'POST') {
+      return new Response('Method not allowed', { status: 405 });
+    }
+    
     // Webhook endpoint for Telegram (default path)
     try {
       // Create bot instance and register handlers
       const bot = new Bot(env.BOT_TOKEN, { 
         botInfo: env.BOT_INFO ? JSON.parse(env.BOT_INFO) : undefined 
       });
-      registerHandlers(bot);
+      registerHandlers(bot, env);
       
       // Create webhook handler and process request
       const handleUpdate = webhookCallback(bot, 'cloudflare-mod');
