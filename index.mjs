@@ -7,10 +7,10 @@ const WEBHOOK_SECRET = "ec6bc090856641e9b2aca785d7a34727";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
-// ⚠️ RapidAPI Endpoint Configuration
-const RAPIDAPI_HOST = 'facebook17.p.rapidapi.com';
-const RAPIDAPI_KEY = 'd110357f31msh2e0d5216204b77dp10675bjsn98cfa8c30266'; // ඔබගේ සැබෑ යතුර
-const RAPIDAPI_URL = `https://${RAPIDAPI_HOST}/api/facebook/links`;
+// ⚠️ නව RapidAPI Endpoint Configuration
+const RAPIDAPI_HOST = 'facebook-media-downloader1.p.rapidapi.com';
+const RAPIDAPI_KEY = 'd110357f31msh2e0d5216204b77dp10675bjsn98cfa8c30266'; // ඔබ විසින් ලබා දුන් යතුර
+const RAPIDAPI_URL = `https://${RAPIDAPI_HOST}/get_media`;
 
 
 // --- 2. Telegram API Interaction (Telegram API අන්තර්ක්‍රියා) ---
@@ -26,7 +26,7 @@ async function sendVideoFromUrl(chat_id, video_url, caption) {
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 }
 
-// --- 3. Facebook Video Downloader Logic (RapidAPI භාවිතයෙන්) ---
+// --- 3. Facebook Video Downloader Logic (නව RapidAPI භාවිතයෙන්) ---
 
 async function getFbVideoLinks(videoUrl) {
     try {
@@ -48,12 +48,11 @@ async function getFbVideoLinks(videoUrl) {
         const data = await response.json(); 
         console.log("RapidAPI Full Response Data:", data); 
 
-        // ⚠️ RapidAPI ප්‍රතිචාර ව්‍යුහය පරීක්ෂා කිරීම:
-        // සාර්ථක ප්‍රතිචාරයකදී, සබැඳි 'links' අරාව තුළ තිබිය යුතුය.
+        // ⚠️ නව API ප්‍රතිචාර ව්‍යුහය පරීක්ෂා කිරීම (උපකල්පනය):
+        // අපි උපකල්පනය කරන්නේ සබැඳි 'links' අරාවක 'url' සහ 'quality' ලෙස තිබෙන බවයි.
         if (data && Array.isArray(data.links) && data.links.length > 0) {
             
-            // අපි උපකල්පනය කරන්නේ සබැඳි 'quality' සහ 'url' ලෙස තිබෙන බවයි
-            // ඔබගේ පෙර කේතයේ මෙන් HD/SD සොයා ගනී
+            // HD සහ SD සබැඳි සොයා ගනී
             const hdLink = data.links.find(link => link.quality && (link.quality.includes('720') || link.quality.toUpperCase() === 'HD'))?.url;
             const sdLink = data.links.find(link => link.quality && (link.quality.includes('360') || link.quality.toUpperCase() === 'SD'))?.url;
             
@@ -102,30 +101,27 @@ async function handleTelegramWebhook(request) {
             await sendMessage(chatId, `❌ දෝෂය: ${result.error}\n\n💡 කරුණාකර පරීක්ෂා කරන්න:\n- වීඩියෝ URL නිවැරදි දැයි\n- වීඩියෝව ප්‍රසිද්ධ (public) දැයි`);
         
         } else if (result.hd) {
-            // HD යැවීමට උත්සාහ කිරීම
             try {
                 await sendVideoFromUrl(chatId, result.hd, '✅ Facebook වීඩියෝව බාගත කරන ලදී! (HD)');
             } catch (error) {
                 console.error("Error sending HD video:", error.message);
                 if (result.sd) {
-                    // HD අසාර්ථක නම්, SD යවන්න
                     try {
                         await sendVideoFromUrl(chatId, result.sd, '✅ Facebook වීඩියෝව බාගත කරන ලදී! (SD)\n⚠️ HD ප්‍රමාණය ඉතා විශාල නිසා SD යැවීය.');
                     } catch (sdError) {
                         console.error("Error sending SD video:", sdError.message);
-                        await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.\n\n📎 Download Link:\n" + result.sd);
+                        await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.");
                     }
                 } else {
                     await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.");
                 }
             }
         } else if (result.sd) {
-            // HD නොමැති නම් SD සෘජුවම යවන්න
             try {
                  await sendVideoFromUrl(chatId, result.sd, '✅ Facebook වීඩියෝව බාගත කරන ලදී! (SD)');
             } catch (error) {
                 console.error("Error sending SD video:", error.message);
-                await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.\n\n📎 Download Link:\n" + result.sd);
+                await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.");
             }
         }
     } else {
