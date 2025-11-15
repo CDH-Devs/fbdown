@@ -7,56 +7,85 @@ const WEBHOOK_SECRET = "ec6bc090856641e9b2aca785d7a34727";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
-// ⚠️ වැදගත්: මෙහි ඔබ විසින් සොයාගත් සැබෑ, ක්‍රියාකාරී API සබැඳිය ඇතුළත් කරන්න.
-const FB_API_URL = "https://api.some-fb-downloader.com/get_video?url="; // <--- මෙය වෙනස් කරන්න!
+// Facebook Mobile URL එක භාවිතයෙන් Scraping කිරීමට උත්සාහ කිරීම
+const MOBILE_FB_URL = "https://m.facebook.com/"; 
 
 // --- 2. Telegram API Interaction (Telegram API අන්තර්ක්‍රියා) ---
+// (පෙර කේතයේ තිබූ send/sendVideo ශ්‍රිත වෙනස් නොවේ)
+
 async function sendMessage(chat_id, text) {
     const url = `${TELEGRAM_API}${BOT_TOKEN}/sendMessage`;
     const payload = { chat_id: chat_id, text: text, parse_mode: 'Markdown' };
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 }
 
-async function sendVideoFromUrl(chat_id, video_url, quality) {
+async function sendVideoFromUrl(chat_id, video_url, caption) {
     const url = `${TELEGRAM_API}${BOT_TOKEN}/sendVideo`;
-    const payload = { video: video_url, caption: `✅ Facebook වීඩියෝව බාගත කරන ලදී! (${quality})`, chat_id: chat_id };
+    const payload = { chat_id: chat_id, video: video_url, caption: caption };
     return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 }
 
-// --- 3. Facebook Video Downloader Logic (වීඩියෝ බාගත කිරීමේ තර්කය) ---
-async function getFbVideoLinks(videoUrl) {
-    try {
-        const apiResponse = await fetch(`${FB_API_URL}${encodeURIComponent(videoUrl)}`);
-        
-        if (!apiResponse.ok) {
-            // Log 1: API එකෙන් 200 OK හැර වෙනත් තත්ත්ව කේතයක් ලැබුණහොත්
-            console.error(`API response status: ${apiResponse.status}`);
-            return null;
-        }
-        
-        const data = await apiResponse.json(); 
-        console.log("API Full Response Data:", data); // Log 2: සම්පූර්ණ JSON ප්‍රතිචාරය සටහන් කිරීම
+// --- 3. ⚠️ Direct HTML Scraping Logic (Scraper Logic) ---
 
-        // උපකල්පිත JSON ව්‍යුහය පරීක්ෂා කිරීම:
-        if (data && data.status === 'ok' && Array.isArray(data.links)) {
-            const hdLink = data.links.find(link => link.quality && (link.quality.toUpperCase() === 'HD' || link.quality.includes('720p')) && link.url)?.url;
-            const sdLink = data.links.find(link => link.quality && (link.quality.toUpperCase() === 'SD' || link.quality.includes('360p')) && link.url)?.url;
-            return { hd: hdLink, sd: sdLink };
-        }
+/**
+ * Facebook වීඩියෝ පිටුව fetch කර, 'hd_src' සහ 'sd_src' සබැඳි සඳහා HTML කේතය සීරීමට උත්සාහ කරයි.
+ * මෙය FB scraping පැකේජයක අභ්‍යන්තර තර්කය අනුකරණය කිරීමට දරන උත්සාහයකි.
+ */
+async function scrapeFbVideo(videoUrl) {
+    try {
+        // බොහෝ ස්ක්‍රේපර් 'm.facebook.com' භාවිත කරයි
+        const mobileUrl = videoUrl.replace(/www\.|m\./, 'm.'); 
         
-        console.error("API response structure unexpected or links not found:", data);
-        return null; 
+        console.log(`Attempting to scrape URL: ${mobileUrl}`);
+        
+        // Headers මගින් බ්‍රවුසරයක් ලෙස පෙන්වීමට උත්සාහ කිරීම
+        const response = await fetch(mobileUrl, {
+            headers: {
+                // සරල Android User-Agent එකක්
+                'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.162 Mobile Safari/537.36'
+            },
+            redirect: 'follow' // Redirect අනුගමනය කරන්න
+        });
+
+        if (!response.ok) {
+            console.error(`Scraping failed with status: ${response.status}`);
+            return { error: `වීඩියෝ පිටුවට ප්‍රවේශ විය නොහැක (${response.status})` };
+        }
+
+        const htmlText = await response.text();
+        
+        // ⚠️ අස්ථායී කොටස: HTML එකෙන් සබැඳි සෙවීම
+        // HD සබැඳිය සොයා ගැනීම (සාමාන්‍යයෙන් 'hd_src' ලෙස HTML තුළ කේතගත කර ඇත)
+        const hdMatch = htmlText.match(/\"hd_src\":\"(.*?)\"/);
+        const sdMatch = htmlText.match(/\"sd_src\":\"(.*?)\"/);
+        
+        // බොහෝ විට, සබැඳි escape කර ඇත, එබැවින් ඒවා unescape කිරීමට අවශ්‍ය වේ
+        const hdLink = hdMatch && hdMatch[1] ? hdMatch[1].replace(/\\/g, '') : null;
+        const sdLink = sdMatch && sdMatch[1] ? sdMatch[1].replace(/\\/g, '') : null;
+
+        if (hdLink || sdLink) {
+             console.log(`Scraping Success: HD=${hdLink ? 'Found' : 'Not Found'}, SD=${sdLink ? 'Found' : 'Not Found'}`);
+            return { hd: hdLink, sd: sdLink };
+        } 
+        
+        // වීඩියෝ පිටුව Private හෝ කේතය වෙනස් වී තිබිය හැක
+        console.error("Scraping Failure: No matching video links found in HTML.");
+        return { error: "වීඩියෝ සබැඳි HTML වෙතින් උකහා ගැනීමට නොහැක (වීඩියෝව Private හෝ HTML ව්‍යුහය වෙනස් වී තිබිය හැක)." };
 
     } catch (error) {
-        console.error("Facebook API fetch error:", error);
-        return null;
+        console.error("Facebook Scraping fetch error:", error.message);
+        return { error: `Scraping දෝෂය: ${error.message}` };
     }
 }
 
 // --- 4. Main Handler (ප්‍රධාන Webhook හැසිරවීම) ---
+
 async function handleTelegramWebhook(request) {
+    // Webhook Secret පරීක්ෂාව
     const secret = request.headers.get("x-telegram-bot-api-secret-token");
-    if (secret !== WEBHOOK_SECRET) { return new Response('Unauthorized', { status: 401 }); }
+    if (secret !== WEBHOOK_SECRET) {
+        return new Response('Unauthorized', { status: 401 }); 
+    }
     
     const update = await request.json();
     if (!update.message || !update.message.text) { return new Response('No message text', { status: 200 }); }
@@ -66,25 +95,52 @@ async function handleTelegramWebhook(request) {
     
     if (text.startsWith('/start') || text.startsWith('/help')) {
         await sendMessage(chatId, "👋 **ආයුබෝවන්!** මම Facebook වීඩියෝ බාගත කරන්නා. මට Facebook වීඩියෝ සබැඳියක් (link) එවන්න.");
-    } else {
-        const fbUrlMatch = text.match(/https?:\/\/(?:www\.|m\.)?facebook\.com\/\S+/i);
-        if (fbUrlMatch) {
-            const fbUrl = fbUrlMatch[0];
-            await sendMessage(chatId, "⏳ වීඩියෝ සබැඳිය විශ්ලේෂණය කරමින්... කරුණාකර මොහොතක් රැඳී සිටින්න.");
-            
-            const videoLinks = await getFbVideoLinks(fbUrl);
-
-            if (videoLinks && videoLinks.hd) {
-                await sendVideoFromUrl(chatId, videoLinks.hd, 'HD');
-            } else if (videoLinks && videoLinks.sd) {
-                await sendVideoFromUrl(chatId, videoLinks.sd, 'SD');
-            } else {
-                await sendMessage(chatId, "❌ වීඩියෝ සබැඳිය ලබා ගැනීමට නොහැකි විය. සබැඳිය නිවැරදි දැයි පරීක්ෂා කරන්න, නැතහොත් Bot ගේ API සේවාව අක්‍රිය විය හැක.");
-            }
-        } else {
-            await sendMessage(chatId, "💡 කරුණාකර වලංගු Facebook වීඩියෝ සබැඳියක් පමණක් එවන්න.");
-        }
+        return new Response('Command handled', { status: 200 });
     }
+
+    const fbUrlMatch = text.match(/https?:\/\/(?:www\.|m\.|fb\.)?facebook\.com\/\S+|https?:\/\/fb\.watch\/\S+/i);
+    if (fbUrlMatch) {
+        const fbUrl = fbUrlMatch[0];
+        
+        await sendMessage(chatId, "⏳ වීඩියෝ සබැඳිය විශ්ලේෂණය කරමින්... කරුණාකර මොහොතක් රැඳී සිටින්න.");
+        
+        // Scraping ශ්‍රිතය ඇමතීම
+        const result = await scrapeFbVideo(fbUrl);
+
+        if (result.error) {
+            await sendMessage(chatId, `❌ දෝෂය: ${result.error}\n\n💡 කරුණාකර පරීක්ෂා කරන්න:\n- වීඩියෝ URL නිවැරදි දැයි\n- වීඩියෝව ප්‍රසිද්ධ (public) දැයි`);
+        
+        } else if (result.hd) {
+            // HD යැවීමට උත්සාහ කිරීම
+            try {
+                await sendVideoFromUrl(chatId, result.hd, '✅ Facebook වීඩියෝව බාගත කරන ලදී! (HD)');
+            } catch (error) {
+                console.error("Error sending HD video:", error.message);
+                if (result.sd) {
+                    // HD අසාර්ථක නම්, SD යවන්න
+                    try {
+                        await sendVideoFromUrl(chatId, result.sd, '✅ Facebook වීඩියෝව බාගත කරන ලදී! (SD)\n⚠️ HD ප්‍රමාණය ඉතා විශාල නිසා SD යැවීය.');
+                    } catch (sdError) {
+                        console.error("Error sending SD video:", sdError.message);
+                        await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.");
+                    }
+                } else {
+                    await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.");
+                }
+            }
+        } else if (result.sd) {
+            // HD නොමැති නම් SD සෘජුවම යවන්න
+            try {
+                 await sendVideoFromUrl(chatId, result.sd, '✅ Facebook වීඩියෝව බාගත කරන ලදී! (SD)');
+            } catch (error) {
+                console.error("Error sending SD video:", error.message);
+                await sendMessage(chatId, "❌ වීඩියෝව යැවීමට නොහැකි විය. වීඩියෝ ප්‍රමාණය ඉතා විශාල විය හැක.");
+            }
+        }
+    } else {
+        await sendMessage(chatId, "💡 කරුණාකර වලංගු Facebook වීඩියෝ සබැඳියක් පමණක් එවන්න.");
+    }
+
     return new Response('Message handled', { status: 200 });
 }
 
