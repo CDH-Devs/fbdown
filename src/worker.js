@@ -1,20 +1,16 @@
 /**
  * src/index.js
- * Final Fix V8: Complete Markdown V2 Compliance for Static Messages and Scraped Content.
+ * Final Fix V9: Caption Length Limit Fix + Ultimate Markdown V2 Compliance
  */
 
 // ** 1. MarkdownV2 හි සියලුම විශේෂ අක්ෂර Escape කිරීමේ Helper Function **
-// මෙය Title සහ Stats හැර අනෙකුත් සියලුම static පණිවිඩ සඳහා භාවිතා වේ.
 function escapeMarkdownV2(text) {
     if (!text) return "";
-    // MarkdownV2 special characters: _, *, [, ], (, ), ~, `, >, #, +, -, =, |, {, }, ., !
-    // Backslash (\) ද escape කළ යුතුය.
-    // 'g' flag එක global replace සඳහා.
+    // සියලුම MarkdownV2 special characters සහ Backslash (\) ද escape කළ යුතුය.
     return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\\\])/g, '\\$1');
 }
 
 // ** 2. Scraped Title/Stats සඳහා Cleaner Function **
-// මෙය HTML ඉවත් කර Markdown V2 Escape කරයි.
 function sanitizeText(text) {
     if (!text) return "";
     // 1. HTML tags ඉවත් කිරීම
@@ -24,8 +20,7 @@ function sanitizeText(text) {
     // 3. HTML entities විකේතනය කිරීම
     cleaned = cleaned.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'); 
 
-    // 4. සියලුම Markdown V2 අක්ෂර escape කිරීම (Title එක Bold කිරීමට * අවශ්‍ය නිසා, එය පසුව යොදනු ලැබේ)
-    // අපි මෙහිදී සියල්ලම escape කරමු.
+    // 4. සියලුම Markdown V2 අක්ෂර escape කිරීම (Bold සඳහා * පසුව යොදනු ලැබේ)
     cleaned = cleaned.replace(/([_*\[\]()~`>#+\-=|{}.!\\\\])/g, '\\$1'); 
 
     return cleaned;
@@ -34,7 +29,9 @@ function sanitizeText(text) {
 
 export default {
     async fetch(request, env, ctx) {
-        // ... (අනෙක් කොටස් පෙර පරිදිම පවතී) ...
+        if (request.method !== 'POST') {
+            return new Response('Hello, I am your FDOWN Telegram Worker Bot.', { status: 200 });
+        }
 
         const BOT_TOKEN = env.BOT_TOKEN;
         const telegramApi = `https://api.telegram.org/bot${BOT_TOKEN}`;
@@ -49,8 +46,6 @@ export default {
                 const messageId = message.message_id;
                 
                 if (text === '/start') {
-                    console.log(`[START] Chat ID: ${chatId}`);
-                    // escapeMarkdownV2 භාවිතයෙන් පණිවිඩය යැවීම
                     await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('👋 සුභ දවසක්! මට Facebook වීඩියෝ Link එකක් එවන්න. එවිට මම එය download කර දෙන්නම්.'), messageId);
                     return new Response('OK', { status: 200 });
                 }
@@ -58,8 +53,6 @@ export default {
                 const isLink = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.me)/i.test(text);
                 
                 if (isLink) {
-                    console.log(`[LINK] Received link from ${chatId}: ${text}`);
-                    // Replay message එකත් escape කර ඇත
                     await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('⌛️ වීඩියෝව හඳුනා ගැනේ... කරුණාකර මොහොතක් රැඳී සිටින්න.'), messageId);
                     
                     try {
@@ -68,7 +61,6 @@ export default {
                         const formData = new URLSearchParams();
                         formData.append('URLz', text); 
 
-                        // 1. fdown.net වෙත POST ඉල්ලීම යැවීම
                         const fdownResponse = await fetch(fdownUrl, {
                             method: 'POST',
                             headers: {
@@ -82,28 +74,30 @@ export default {
 
                         const resultHtml = await fdownResponse.text();
                         
-                        // ** 2. Scraping Logic **
-
                         let videoUrl = null;
                         let thumbnailLink = null;
-                        // Title සහ Stats scrape කර sanitizeText මඟින් පිරිසිදු කෙරේ.
                         let videoTitle = "මාතෘකාවක් නොමැත";
                         let videoStats = "";
-                        
-                        // ... Scraping code ... (Title සහ Stats sanitizeText හරහා යන බව උපකල්පනය කෙරේ)
 
-                        // Thumbnail Link සොයා ගැනීම
+                        // Thumbnail Scraping
                         const thumbnailRegex = /<img[^>]+class=["']?fb_img["']?[^>]*src=["']?([^"'\s]+)["']?/i;
                         let thumbnailMatch = resultHtml.match(thumbnailRegex);
                         if (thumbnailMatch && thumbnailMatch[1]) {
                             thumbnailLink = thumbnailMatch[1];
                         }
 
-                        // Title Scraping
+                        // Title Scraping (V9 Fix)
                         const titleRegex = /<h4[^>]*>([\s\S]*?)<\/h4>/i;
                         let titleMatch = resultHtml.match(titleRegex);
+                        
                         if (titleMatch && titleMatch[1]) {
                             let scrapedTitle = sanitizeText(titleMatch[1]);
+                            
+                            // Title එකේ දිග සීමා කිරීම (900 chars)
+                            if (scrapedTitle.length > 900) { 
+                                scrapedTitle = scrapedTitle.substring(0, 897) + "\\.\\.\\."; // තිත් ද escape කර ඇත
+                            }
+
                             if (scrapedTitle.length > 0 && scrapedTitle.toLowerCase() !== "video title") {
                                 videoTitle = scrapedTitle;
                             }
@@ -112,13 +106,16 @@ export default {
                         // Stats Scraping
                         const durationRegex = /Duration:\s*(\d+)\s*seconds/i;
                         let durationMatch = resultHtml.match(durationRegex);
+
                         if (durationMatch && durationMatch[1]) {
                             videoStats = `දිග: ${sanitizeText(durationMatch[1].trim())} තත්පර`;
                         } else {
                             const descriptionRegex = /Description:\s*([\s\S]+?)(?=<br>|<\/p>)/i;
                             let descriptionMatch = resultHtml.match(descriptionRegex);
+                            
                             if (descriptionMatch && descriptionMatch[1]) {
                                 let scrapedDesc = sanitizeText(descriptionMatch[1]);
+                                
                                 if (scrapedDesc.toLowerCase() !== "no video description...") {
                                      videoStats = `විස්තරය: ${scrapedDesc}`;
                                 }
@@ -134,7 +131,8 @@ export default {
                             }
                         }
 
-                        // ... Video URL Scraping (V7 code) ...
+
+                        // Link Scraping
                         const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>.*Download Video in HD Quality.*<\/a>/i;
                         let match = resultHtml.match(hdLinkRegex);
 
@@ -150,24 +148,17 @@ export default {
                         }
 
                         if (videoUrl) {
-                            // ** URL Clean up කිරීම **
                             let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
-                            // ... other URL cleanup logic ...
-
                             const quality = hdLinkRegex.test(resultHtml) ? "HD" : "Normal";
                             
-                            // ** 4. Final Caption එක සකස් කිරීම **
-                            // Title සහ Stats sanitize කර ඇත. දැන් Title එක Bold කිරීමට ** යොදමු.
-                            // Quality: සහ [🔗 Original Link] යන ස්ථිතික පෙළෙහි MarkdownV2 අක්ෂර නොමැති බව උපකල්පනය කෙරේ.
+                            // Final Caption එක සකස් කිරීම
                             let finalCaption = `**${videoTitle}**\n\nQuality: ${quality}\n${videoStats}\n\n[🔗 Original Link](${text})`;
                             
-                            // Caption Length Limit එක පරීක්ෂා කිරීම
+                            // අවසාන Caption එකේ දිග නැවත පරීක්ෂා කිරීම (1024 chars)
                             if (finalCaption.length > 1024) {
                                 finalCaption = finalCaption.substring(0, 1000) + '\.\.\. \\(Caption Truncated\\)'; 
                             }
 
-                            
-                            // ** 5. sendVideo Function එකට යැවීම **
                             await this.sendVideo(telegramApi, chatId, cleanedUrl, finalCaption, messageId, thumbnailLink);
                             
                         } else {
@@ -195,7 +186,6 @@ export default {
     // ------------------------------------
 
     async sendMessage(api, chatId, text, replyToMessageId) {
-        // ... (V7 code) ...
         try {
             await fetch(`${api}/sendMessage`, {
                 method: 'POST',
@@ -208,11 +198,10 @@ export default {
                 }),
             });
         } catch (e) {
-            // Error handling: මෙම දෝෂය log කර ඇත.
+            // Error handling
         }
     },
 
-    // ** sendVideo Function එක **
     async sendVideo(api, chatId, videoUrl, caption, replyToMessageId, thumbnailLink = null) {
         
         const videoResponse = await fetch(videoUrl);
@@ -222,7 +211,29 @@ export default {
             return;
         }
         
-        // ... (V7 code) ...
+        const videoBlob = await videoResponse.blob();
+        
+        const formData = new FormData();
+        formData.append('chat_id', chatId);
+        formData.append('caption', caption);
+        formData.append('parse_mode', 'MarkdownV2'); 
+        if (replyToMessageId) {
+            formData.append('reply_to_message_id', replyToMessageId);
+        }
+        
+        formData.append('video', videoBlob, 'video.mp4'); 
+
+        if (thumbnailLink) {
+            try {
+                const thumbResponse = await fetch(thumbnailLink);
+                if (thumbResponse.ok) {
+                    const thumbBlob = await thumbResponse.blob();
+                    formData.append('thumb', thumbBlob, 'thumbnail.jpg');
+                } 
+            } catch (e) {
+                // Error handling
+            }
+        }
 
         try {
             const telegramResponse = await fetch(`${api}/sendVideo`, {
