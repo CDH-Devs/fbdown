@@ -1,11 +1,11 @@
 /**
  * src/index.js
  * Cloudflare Worker Telegram Bot Code (Facebook Video Downloader via fdown.net scraping)
- * ** විශේෂාංග: Improved Scraping for Title/Stats (V6), HD/Normal Download, Blob Stream Upload, Caption Length Limit Fix, Full Markdown V2 Escape.
+ * ** විශේෂාංග: Improved Scraping for Title/Stats (V7), HD/Normal Download, Blob Stream Upload, Caption Length Limit Fix, Full Markdown V2 Escape.
  */
 
 // MarkdownV2 හි සියලුම විශේෂ අක්ෂර escape කරන්න.
-// මෙම ශ්‍රිතය සාමාන්‍ය පණිවිඩ සඳහා භාවිතා වේ.
+// මෙම ශ්‍රිතය සාමාන්‍ය පණිවිඩ සඳහා සහ කැප්ෂන් වල ස්ථිතික කොටස් සඳහා භාවිතා වේ.
 function escapeMarkdownV2(text) {
     if (!text) return "";
     // MarkdownV2 special characters: _, *, [, ], (, ), ~, `, >, #, +, -, =, |, {, }, ., !
@@ -14,7 +14,7 @@ function escapeMarkdownV2(text) {
 }
 
 // Title/Stats scraping වලදී HTML ඉවත් කිරීමට සහ අනවශ්‍ය Markdown අක්ෂර Escape කිරීමට.
-// මෙහිදී * escape නොකරමු, Title Bold කිරීමට එය අවශ්‍ය නිසා.
+// මෙහිදී * ද escape කරනු ලැබේ (Title Bold කිරීමට අවශ්‍ය නිසා, එය පසුව යොදනු ලැබේ).
 function sanitizeText(text) {
     if (!text) return "";
     // 1. HTML tags ඉවත් කිරීම
@@ -24,9 +24,8 @@ function sanitizeText(text) {
     // 3. HTML entities විකේතනය කිරීම
     cleaned = cleaned.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'); 
 
-    // 4. Title/Stats තුළ ඇති Markdown V2 අක්ෂර escape කිරීම (Link සහ Bold * හැර)
-    // [ , ] , ( , ) , ~ , ` , > , # , + , - , = , | , { , } , . , !
-    cleaned = cleaned.replace(/([_\[\]()~`>#+\-=|{}.!\\\\])/g, '\\$1'); 
+    // 4. සියලුම Markdown V2 අක්ෂර escape කිරීම
+    cleaned = cleaned.replace(/([_*\[\]()~`>#+\-=|{}.!\\\\])/g, '\\$1'); 
 
     return cleaned;
 }
@@ -84,7 +83,7 @@ export default {
 
                         const resultHtml = await fdownResponse.text();
                         
-                        // ** 2. Thumbnail, Title සහ Stats Scrap කිරීම (Improved RegEx V6) **
+                        // ** 2. Thumbnail, Title සහ Stats Scrap කිරීම (Improved RegEx V7) **
                         let videoUrl = null;
                         let thumbnailLink = null;
                         let videoTitle = "මාතෘකාවක් නොමැත";
@@ -97,31 +96,32 @@ export default {
                             thumbnailLink = thumbnailMatch[1];
                         }
 
-                        // ** IMPROVED TITLE SCRAPING V6 **
-                        const titleRegexV6 = /<h4[^>]*>([\s\S]*?)<\/h4>/i;
-                        let titleMatchV6 = resultHtml.match(titleRegexV6);
+                        // ** IMPROVED TITLE SCRAPING V7 **
+                        const titleRegexV7 = /<h4[^>]*>([\s\S]*?)<\/h4>/i;
+                        let titleMatchV7 = resultHtml.match(titleRegexV7);
                         
-                        if (titleMatchV6 && titleMatchV6[1]) {
-                            let scrapedTitle = sanitizeText(titleMatchV6[1]);
+                        if (titleMatchV7 && titleMatchV7[1]) {
+                            // sanitizeText function එක භාවිතා කර Title එක පිරිසිදු කිරීම (සියලු Markdown escape කර ඇත)
+                            let scrapedTitle = sanitizeText(titleMatchV7[1]);
                             
                             if (scrapedTitle.length > 0 && scrapedTitle.toLowerCase() !== "video title") {
                                 videoTitle = scrapedTitle;
                             }
                         }
 
-                        // ** IMPROVED STATS SCRAPING V6 (Duration/Description) **
+                        // ** IMPROVED STATS SCRAPING V7 (Duration/Description) **
                         
-                        const durationRegexV6 = /Duration:\s*(\d+)\s*seconds/i;
-                        let durationMatchV6 = resultHtml.match(durationRegexV6);
+                        const durationRegexV7 = /Duration:\s*(\d+)\s*seconds/i;
+                        let durationMatchV7 = resultHtml.match(durationRegexV7);
 
-                        if (durationMatchV6 && durationMatchV6[1]) {
-                            videoStats = `දිග: ${sanitizeText(durationMatchV6[1].trim())} තත්පර`;
+                        if (durationMatchV7 && durationMatchV7[1]) {
+                            videoStats = `දිග: ${sanitizeText(durationMatchV7[1].trim())} තත්පර`; // Stats ද sanitize කර ඇත
                         } else {
-                            const descriptionRegexV6 = /Description:\s*([\s\S]+?)(?=<br>|<\/p>)/i;
-                            let descriptionMatchV6 = resultHtml.match(descriptionRegexV6);
+                            const descriptionRegexV7 = /Description:\s*([\s\S]+?)(?=<br>|<\/p>)/i;
+                            let descriptionMatchV7 = resultHtml.match(descriptionRegexV7);
                             
-                            if (descriptionMatchV6 && descriptionMatchV6[1]) {
-                                let scrapedDesc = sanitizeText(descriptionMatchV6[1]);
+                            if (descriptionMatchV7 && descriptionMatchV7[1]) {
+                                let scrapedDesc = sanitizeText(descriptionMatchV7[1]);
                                 
                                 if (scrapedDesc.toLowerCase() !== "no video description...") {
                                      videoStats = `විස්තරය: ${scrapedDesc}`;
@@ -157,14 +157,12 @@ export default {
                         if (videoUrl) {
                             // ** URL Clean up කිරීම **
                             let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
-                            // URL එක තුළ ඇති තිත් Escape නොකරයි
-                            
                             // ... other URL cleanup logic ...
 
                             const quality = hdLinkRegex.test(resultHtml) ? "HD" : "Normal";
                             
                             // ** 4. නව Caption එක සකස් කිරීම සහ Length Limit Fix **
-                            // Title එක Markdown V2 Bold (\*\* \*\*) වලින් ආවරණය කිරීම
+                            // Title සහ Stats දැනටමත් sanitize කර ඇත. දැන් Title එක Bold කිරීමට ** යොදමු.
                             let finalCaption = `**${videoTitle}**\n\nQuality: ${quality}\n${videoStats}\n\n[🔗 Original Link](${text})`;
                             
                             // Caption Length Limit එක පරීක්ෂා කිරීම (1024 characters)
