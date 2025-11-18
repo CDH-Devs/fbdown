@@ -4,7 +4,7 @@
  * * අවසන් නිවැරදි කිරීම්:
  * 1. fdown.net වෙත POST ඉල්ලීම සඳහා redirect: 'follow' යෙදීම.
  * 2. HD/Normal Quality Links නිවැරදි RegEx මඟින් Scrap කිරීම.
- * 3. Link Expiry ගැටලුව මඟහරවා Link එක Stream කරමින් Telegram වෙත යැවීම.
+ * 3. Link Expiry/Wrong File ID ගැටලු මඟහරවා CDN Link එක Blob ලෙස Stream කරමින් Telegram වෙත යැවීම.
  */
 
 export default {
@@ -95,7 +95,7 @@ export default {
                             const quality = hdLinkRegex.test(resultHtml) ? "HD" : "Normal";
                             console.log(`[SUCCESS] Video Link found (${quality}): ${cleanedUrl}`);
                             
-                            // 3. Telegram වෙත වීඩියෝව Stream කරමින් යැවීම (Link Expiry Fix)
+                            // 3. Telegram වෙත වීඩියෝව Stream කරමින් යැවීම (Blob Fix)
                             await this.sendVideo(telegramApi, chatId, cleanedUrl, `මෙන්න ඔබගේ වීඩියෝව! ${quality} Quality එකෙන් download කර ඇත.`, messageId);
                             
                         } else {
@@ -144,10 +144,10 @@ export default {
         }
     },
 
-    // ** වීඩියෝව Stream කරමින් Upload කරන නවතම Function එක **
+    // ** වීඩියෝව Blob ලෙස Stream කරමින් Upload කරන නවතම Function එක **
     async sendVideo(api, chatId, videoUrl, caption, replyToMessageId) {
         
-        // 1. Facebook CDN Link එක Fetch කිරීම (Direct Streaming)
+        // 1. Facebook CDN Link එක Fetch කිරීම
         const videoResponse = await fetch(videoUrl);
         
         if (videoResponse.status !== 200) {
@@ -156,7 +156,10 @@ export default {
             return;
         }
         
-        // 2. Telegram 'sendVideo' API වෙත FormData ලෙස යැවීම
+        // 2. Response body එක Blob එකක් ලෙස පරිවර්තනය කිරීම (File ID දෝෂය නිරාකරණය කරයි)
+        const videoBlob = await videoResponse.blob();
+        
+        // 3. Telegram 'sendVideo' API වෙත FormData ලෙස යැවීම
         const formData = new FormData();
         formData.append('chat_id', chatId);
         formData.append('caption', caption);
@@ -165,8 +168,8 @@ export default {
             formData.append('reply_to_message_id', replyToMessageId);
         }
         
-        // වීඩියෝව ගොනුවක් ලෙස FormData එකට එකතු කිරීම (Stream)
-        formData.append('video', videoResponse.body, 'facebook_video.mp4');
+        // Blob එක නිවැරදි ගොනු නාමයක් සමඟ FormData එකට යැවීම
+        formData.append('video', videoBlob, 'video.mp4'); 
 
         try {
             const telegramResponse = await fetch(`${api}/sendVideo`, {
