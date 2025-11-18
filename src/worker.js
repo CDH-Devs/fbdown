@@ -54,7 +54,11 @@ export default {
                                 'Content-Type': 'application/x-www-form-urlencoded',
                                 'Referer': 'https://fdown.net/', 
                             },
-                            body: formData.toString()
+                            body: formData.toString(),
+                            // **********************************
+                            // !!! Redirection Fix !!!
+                            // **********************************
+                            redirect: 'follow' // Redirects (302) ස්වයංක්‍රීයව අනුගමනය කිරීම
                         });
 
                         const resultHtml = await fdownResponse.text();
@@ -63,8 +67,7 @@ export default {
                         
                         let videoUrl = null;
 
-                        // HD Link එක සොයන ලිහිල් කළ RegEx එක: (Quotes සහ Spacings ලිහිල් කර ඇත)
-                        // 'btn-success' class එක සහ 'HD Quality' text එක සොයයි.
+                        // HD Link එක සොයන ලිහිල් කළ RegEx එක:
                         const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*class=["']?[^"']*btn-success[^"']*[rR]el=["']?nofollow["']?[^>]*>Download Video in HD Quality<\/a>/i;
                         let match = resultHtml.match(hdLinkRegex);
 
@@ -72,7 +75,6 @@ export default {
                             videoUrl = match[1]; // HD Link එක
                         } else {
                             // Normal Quality Link එකක් සොයන ලිහිල් කළ RegEx එක: (Fallback)
-                            // 'btn-default' class එක සහ 'Normal Quality' text එක සොයයි.
                             const normalLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*class=["']?[^"']*btn-default[^"']*[rR]el=["']?nofollow["']?[^>]*>Download Video in Normal Quality<\/a>/i;
                             match = resultHtml.match(normalLinkRegex);
 
@@ -89,8 +91,8 @@ export default {
                             await this.sendVideo(telegramApi, chatId, videoUrl, `මෙන්න ඔබගේ වීඩියෝව! ${quality} Quality එකෙන් download කර ඇත.`, messageId);
                             
                         } else {
-                            // HD හෝ Normal Link එක සොයා ගැනීමට නොහැකි නම්, HTML ප්‍රතිචාරයේ කොටසක් Log එකට යවමු.
-                            console.error(`[SCRAPING FAILED] No HD/Normal link found for ${text}. HTML response start: ${resultHtml.substring(0, 500)}`);
+                            // Link එකක් සොයා ගැනීමට නොහැකි නම්, Log එකට HTML ප්‍රතිචාරය යවමු.
+                            console.error(`[SCRAPING FAILED] No HD/Normal link found for ${text}. Full HTML Response: ${resultHtml}`);
                             
                             await this.sendMessage(telegramApi, chatId, '⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය. වීඩියෝව Private (පුද්ගලික) විය හැක.', messageId);
                         }
@@ -110,7 +112,6 @@ export default {
 
         } catch (e) {
             console.error("[GLOBAL ERROR] Unhandled Error:", e.message, e);
-            // දෝෂයක් ඇති වුවද Telegram හට නැවත යැවීම වැලැක්වීමට 200 OK යැවීම
             return new Response('OK', { status: 200 }); 
         }
     },
