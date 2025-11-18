@@ -1,6 +1,10 @@
 /**
  * src/index.js
  * Cloudflare Worker Telegram Bot Code (Facebook Video Downloader via fdown.net scraping)
+ * * අවසන් නිවැරදි කිරීම්:
+ * 1. fdown.net වෙත POST ඉල්ලීම සඳහා redirect: 'follow' යෙදීම.
+ * 2. HD/Normal Quality Links නිවැරදි RegEx මඟින් Scrap කිරීම.
+ * 3. Link Expiry ගැටලුව මඟහරවා Link එක Stream කරමින් Telegram වෙත යැවීම.
  */
 
 export default {
@@ -9,6 +13,7 @@ export default {
             return new Response('Hello, I am your FDOWN Telegram Worker Bot.', { status: 200 });
         }
 
+        // Environment Variables (BOT_TOKEN) භාවිතා කරන්න
         const BOT_TOKEN = env.BOT_TOKEN;
         const telegramApi = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
@@ -27,7 +32,7 @@ export default {
                     return new Response('OK', { status: 200 });
                 }
 
-                const isLink = /^https?:\/\//i.test(text);
+                const isLink = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.me)/i.test(text);
                 
                 if (isLink) {
                     console.log(`[LINK] Received link from ${chatId}: ${text}`);
@@ -39,6 +44,7 @@ export default {
                         const formData = new URLSearchParams();
                         formData.append('URLz', text); 
 
+                        // 1. fdown.net වෙත POST ඉල්ලීම යැවීම (redirect: 'follow' වැදගත්)
                         const fdownResponse = await fetch(fdownUrl, {
                             method: 'POST',
                             headers: {
@@ -52,7 +58,7 @@ export default {
 
                         const resultHtml = await fdownResponse.text();
 
-                        // 3. HTML ප්‍රතිචාරයෙන් HD සහ Normal Video Links Scrap කිරීම
+                        // 2. HTML ප්‍රතිචාරයෙන් HD සහ Normal Video Links Scrap කිරීම
                         let videoUrl = null;
 
                         const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>.*Download Video in HD Quality.*<\/a>/i;
@@ -70,7 +76,7 @@ export default {
                         }
 
                         if (videoUrl) {
-                            // ** URL Clean up සහ Length/Timeout Fix **
+                            // ** URL Clean up කිරීම **
                             let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
                             cleanedUrl = cleanedUrl.replace(/&dl=[01]/, ''); 
                             
@@ -80,7 +86,7 @@ export default {
                                 console.warn("URL decoding failed, using raw URL.");
                             }
                             
-                            // .mp4 link එකේ මූලික කොටස පමණක් ලබා ගැනීමට උත්සාහ කිරීම (Link Expire වීම අවම කිරීමට)
+                            // .mp4 link එකේ මූලික කොටස පමණක් ලබා ගැනීමට උත්සාහ කිරීම (Cleanup)
                             let baseVideoUrlMatch = cleanedUrl.match(/(.*\.mp4\?.*)/i);
                             if (baseVideoUrlMatch && baseVideoUrlMatch[1]) {
                                 cleanedUrl = baseVideoUrlMatch[1];
@@ -89,17 +95,17 @@ export default {
                             const quality = hdLinkRegex.test(resultHtml) ? "HD" : "Normal";
                             console.log(`[SUCCESS] Video Link found (${quality}): ${cleanedUrl}`);
                             
-                            // 4. Telegram වෙත වීඩියෝව යැවීම (cleanedUrl භාවිතා කරමින්)
+                            // 3. Telegram වෙත වීඩියෝව Stream කරමින් යැවීම (Link Expiry Fix)
                             await this.sendVideo(telegramApi, chatId, cleanedUrl, `මෙන්න ඔබගේ වීඩියෝව! ${quality} Quality එකෙන් download කර ඇත.`, messageId);
                             
                         } else {
-                            console.error(`[SCRAPING FAILED] No HD/Normal link found for ${text}. Full HTML Response: ${resultHtml}`);
+                            console.error(`[SCRAPING FAILED] No HD/Normal link found for ${text}.`);
                             
                             await this.sendMessage(telegramApi, chatId, '⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය. වීඩියෝව Private (පුද්ගලික) විය හැක.', messageId);
                         }
                         
                     } catch (fdownError) {
-                        console.error("fdown.net/Scraping Error:", fdownError.message, fdownError);
+                        console.error("fdown.net/Scraping Error:", fdownError.message);
                         await this.sendMessage(telegramApi, chatId, '❌ වීඩියෝව ලබා ගැනීමේදී තාක්ෂණික දෝෂයක් ඇති විය.', messageId);
                     }
                     
@@ -112,10 +118,14 @@ export default {
             return new Response('OK', { status: 200 });
 
         } catch (e) {
-            console.error("[GLOBAL ERROR] Unhandled Error:", e.message, e);
+            console.error("[GLOBAL ERROR] Unhandled Error:", e.message);
             return new Response('OK', { status: 200 }); 
         }
     },
+
+    // ------------------------------------
+    // සහායක Functions
+    // ------------------------------------
 
     async sendMessage(api, chatId, text, replyToMessageId) {
         try {
@@ -134,21 +144,49 @@ export default {
         }
     },
 
+    // ** වීඩියෝව Stream කරමින් Upload කරන නවතම Function එක **
     async sendVideo(api, chatId, videoUrl, caption, replyToMessageId) {
+        
+        // 1. Facebook CDN Link එක Fetch කිරීම (Direct Streaming)
+        const videoResponse = await fetch(videoUrl);
+        
+        if (videoResponse.status !== 200) {
+            console.error(`[TELEGRAM ERROR] Failed to fetch video from CDN. Status: ${videoResponse.status}`);
+            await this.sendMessage(api, chatId, `⚠️ වීඩියෝව කෙලින්ම Upload කිරීමට අසාර්ථකයි. CDN වෙත පිවිසීමට නොහැක.`, replyToMessageId);
+            return;
+        }
+        
+        // 2. Telegram 'sendVideo' API වෙත FormData ලෙස යැවීම
+        const formData = new FormData();
+        formData.append('chat_id', chatId);
+        formData.append('caption', caption);
+        formData.append('parse_mode', 'HTML');
+        if (replyToMessageId) {
+            formData.append('reply_to_message_id', replyToMessageId);
+        }
+        
+        // වීඩියෝව ගොනුවක් ලෙස FormData එකට එකතු කිරීම (Stream)
+        formData.append('video', videoResponse.body, 'facebook_video.mp4');
+
         try {
-            await fetch(`${api}/sendVideo`, {
+            const telegramResponse = await fetch(`${api}/sendVideo`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    chat_id: chatId,
-                    video: videoUrl,
-                    caption: caption,
-                    parse_mode: 'HTML',
-                    ...(replyToMessageId && { reply_to_message_id: replyToMessageId }),
-                }),
+                body: formData, 
             });
+            
+            const telegramResult = await telegramResponse.json();
+            
+            if (!telegramResponse.ok) {
+                console.error("[TELEGRAM UPLOAD ERROR] Status:", telegramResponse.status, "Message:", JSON.stringify(telegramResult));
+                // විශාල ගොනු ප්‍රමාණයේ දෝෂ හෝ වෙනත් දෝෂ
+                await this.sendMessage(api, chatId, `❌ වීඩියෝව යැවීම අසාර්ථකයි! (File Error). හේතුව: ${telegramResult.description || 'නොදන්නා දෝෂයක්.'}`, replyToMessageId);
+            } else {
+                console.log("[TELEGRAM SUCCESS] Video successfully streamed and sent.");
+            }
+            
         } catch (e) {
-            console.error("[TELEGRAM ERROR] Cannot send video:", e.message);
+            console.error("[TELEGRAM API ERROR] Cannot send video (Upload Mode):", e.message);
+            await this.sendMessage(api, chatId, `❌ වීඩියෝව යැවීම අසාර්ථකයි! (Timeout හෝ Network දෝෂයක්).`, replyToMessageId);
         }
     }
 };
