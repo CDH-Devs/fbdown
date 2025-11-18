@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Final Fix V15: Combining ThumbDownloader (Thumbnail) and Fdown.net (Video)
+ * Final Fix V16: Detailed Error Logging
  */
 
 function escapeMarkdownV2(text) {
@@ -43,7 +43,6 @@ export default {
                 const isLink = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.me)/i.test(text);
                 
                 if (isLink) {
-                    // Two-Step process Message
                     await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('⌛️ Thumbnail (ThumbDownloader) සහ Video (FDown\\.net) Links සොයා ගැනේ... කරුණාකර මොහොතක් රැඳී සිටින්න\\.'), messageId);
                     
                     let videoUrl = null;
@@ -67,28 +66,30 @@ export default {
 
                         const thumbResultHtml = await thumbResponse.text();
                         
-                        // Scrape Thumbnail Link (Searching for the download button link or an image tag)
                         const downloadLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>\s*<button[^>]*>Download Image<\/button>/i;
                         let downloadMatch = thumbResultHtml.match(downloadLinkRegex);
 
                         if (downloadMatch && downloadMatch[1]) {
                             thumbnailLink = downloadMatch[1];
+                            console.log(`[LOG] Thumbnail found via Download Button for: ${text}`);
                         } else {
-                            // Fallback: search for a high-res image link
                             const imageTagRegex = /<img[^>]+src=["']?([^"'\s]+)["']?[^>]*alt=["']?Download Facebook Thumbnail/i;
                             let imageMatch = thumbResultHtml.match(imageTagRegex);
 
                             if (imageMatch && imageMatch[1]) {
                                 thumbnailLink = imageMatch[1];
+                                console.log(`[LOG] Thumbnail found via Image Tag for: ${text}`);
                             }
                         }
 
                         if (thumbnailLink) {
                             thumbnailLink = thumbnailLink.replace(/&amp;/g, '&');
+                        } else {
+                            console.warn(`[LOG] Thumbnail Link NOT found for: ${text}`);
                         }
 
                     } catch (thumbError) {
-                        console.error("Thumbnail scraping failed, proceeding with video download:", thumbError);
+                        console.error(`[ERROR] Thumbnail scraping failed for ${text}:`, thumbError);
                     }
 
 
@@ -156,11 +157,13 @@ export default {
                         
                         if (videoUrl) {
                             videoUrl = videoUrl.replace(/&amp;/g, '&');
+                            console.log(`[LOG] Video Link (${quality}) successfully scraped for: ${text}`);
+                        } else {
+                             console.warn(`[LOG] Video Link NOT found on Fdown.net for: ${text}`);
                         }
 
                     } catch (fdownError) {
-                        console.error("Fdown scraping failed:", fdownError);
-                        // videoUrl remains null
+                        console.error(`[ERROR] Fdown.net scraping failed for ${text}:`, fdownError);
                     }
 
 
@@ -173,11 +176,9 @@ export default {
                     }
 
                     if (videoUrl) {
-                        // Send the video with the scraped thumbnail
                         await this.sendVideo(telegramApi, chatId, videoUrl, finalCaption, messageId, thumbnailLink);
                         
                     } else {
-                        // Send error message (Fdown failed)
                         let errorCaption = `❌ සමාවෙන්න, Download Link එක (HD/SD) fdown\\.net වෙතින් සොයා ගැනීමට නොහැකි විය\\. වීඩියෝව Private විය හැක\\.`;
                         if (thumbnailLink) {
                             errorCaption += `\n\nThumbnail Link එක සොයා ගන්නා ලදී, නමුත් වීඩියෝවක් යැවීමට නොහැක\\.`;
@@ -195,7 +196,8 @@ export default {
             return new Response('OK', { status: 200 });
 
         } catch (e) {
-            console.error("General error:", e);
+            // ප්‍රධාන දෝෂය Log කිරීම
+            console.error("!!! [CRITICAL ERROR] UNHANDLED EXCEPTION IN FETCH:", e);
             return new Response('OK', { status: 200 }); 
         }
     },
@@ -213,15 +215,17 @@ export default {
                 }),
             });
         } catch (e) {
-            console.error("Error sending message:", e);
+            console.error("Error sending message to Telegram:", e);
         }
     },
 
     async sendVideo(api, chatId, videoUrl, caption = null, replyToMessageId, thumbnailLink = null) {
         
+        // Telegram Video/Thumbnail sending logic (kept from V15, includes logging)
         const videoResponse = await fetch(videoUrl);
         
         if (videoResponse.status !== 200) {
+            console.error(`[ERROR] Failed to fetch video from CDN. Status: ${videoResponse.status}`);
             
             let messageText = `⚠️ වීඩියෝව කෙලින්ම Upload කිරීමට අසාර්ථකයි\\. CDN වෙත පිවිසීමට නොහැක\\.`;
 
@@ -256,7 +260,10 @@ export default {
                 if (thumbResponse.ok) {
                     const thumbBlob = await thumbResponse.blob();
                     formData.append('thumb', thumbBlob, 'thumbnail.jpg');
-                } 
+                    console.log(`[LOG] Thumbnail blob successfully added.`);
+                } else {
+                     console.warn(`[LOG] Failed to fetch thumbnail link. Status: ${thumbResponse.status}`);
+                }
             } catch (e) {
                 console.error("Error fetching thumbnail:", e);
             }
@@ -271,10 +278,14 @@ export default {
             const telegramResult = await telegramResponse.json();
             
             if (!telegramResponse.ok) {
+                console.error(`[ERROR] Telegram sendVideo failed: ${telegramResult.description || 'Unknown error'}`);
                 await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Error: ${telegramResult.description || 'නොදන්නා දෝෂයක්\\.'})`), replyToMessageId);
+            } else {
+                 console.log("[LOG] Video successfully sent to Telegram.");
             }
             
         } catch (e) {
+            console.error("Error sending video to Telegram:", e);
             await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Network හෝ Timeout දෝෂයක්)\\.`), replyToMessageId);
         }
     }
