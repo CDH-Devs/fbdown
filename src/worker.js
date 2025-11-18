@@ -1,10 +1,10 @@
 /**
  * src/index.js
  * Cloudflare Worker Telegram Bot Code (Facebook Video Downloader via fdown.net scraping)
- * ** විශේෂාංග: Improved Scraping for Title/Stats (V4), HD/Normal Download, Blob Stream Upload, Caption Length Limit Fix, Markdown/HTML Sanitization.
+ * ** විශේෂාංග: Improved Scraping for Title/Stats (V5), HD/Normal Download, Blob Stream Upload, Caption Length Limit Fix, Markdown V2 Tidy-Up.
  */
 
-// Function to clean text (removes HTML tags and escapes potential Markdown characters)
+// Function to clean text (removes HTML tags and escapes potential Markdown V2 characters)
 function sanitizeText(text) {
     if (!text) return "";
     // 1. HTML tags ඉවත් කිරීම
@@ -14,13 +14,14 @@ function sanitizeText(text) {
     // 3. HTML entities විකේතනය කිරීම
     cleaned = cleaned.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'); 
 
-    // 4. Markdown V2 (Telegram) formatting අක්ෂර escape කිරීම (Caption එකේ Markdown භාවිතා කරන නිසා)
-    // **, * , [ , ] , ( , ) , ~ , ` , > , # , + , - , = , | , { , } , . , !
-    // Title එකේ හෝ Stats වල ඇති අනවශ්‍ය formatting ඉවත් කරයි.
-    cleaned = cleaned.replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
+    // 4. Markdown V2 (Telegram) formatting අක්ෂර escape කිරීම
+    // _ , [ , ] , ( , ) , ~ , ` , > , # , + , - , = , | , { , } , . , !
+    // Title එක bold කිරීමට අවශ්‍ය නිසා * අක්ෂරය escape නොකරමු.
+    cleaned = cleaned.replace(/([_\[\]()~`>#+\-=|{}.!])/g, '\\$1'); 
 
-    // **සටහන: Title එක bold කිරීමට ඇති නිසා, අපි මේ අවස්ථාවේ Title එකේ ඇති * අක්ෂර පමණක් escape නොකර ඉතිරි අක්ෂර escape කරමු.**
-    // කෙසේ වෙතත්, සම්පූර්ණ පිරිසිදු කිරීම සඳහා, ඉහත කේතය වඩා ආරක්ෂිතයි.
+    // 5. Backslash (/) Escape කිරීම (Markdown V2 හි අත්‍යවශ්‍යයි)
+    cleaned = cleaned.replace(/\\/g, '\\\\');
+
     return cleaned;
 }
 
@@ -45,15 +46,17 @@ export default {
                 
                 if (text === '/start') {
                     console.log(`[START] Chat ID: ${chatId}`);
-                    await this.sendMessage(telegramApi, chatId, '👋 සුභ දවසක්! මට Facebook වීඩියෝ Link එකක් එවන්න. එවිට මම එය download කර දෙන්නම්.', messageId);
+                    // \. escape කර ඇත
+                    await this.sendMessage(telegramApi, chatId, '👋 සුභ දවසක්\! මට Facebook වීඩියෝ Link එකක් එවන්න\. එවිට මම එය download කර දෙන්නම්\.', messageId);
                     return new Response('OK', { status: 200 });
                 }
 
+                // Link එක තුළ ඇති special characters (උදා: dot) escape කිරීම අනවශ්‍යය.
                 const isLink = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.me)/i.test(text);
                 
                 if (isLink) {
                     console.log(`[LINK] Received link from ${chatId}: ${text}`);
-                    await this.sendMessage(telegramApi, chatId, '⌛️ වීඩියෝව හඳුනා ගැනේ... කරුණාකර මොහොතක් රැඳී සිටින්න.', messageId);
+                    await this.sendMessage(telegramApi, chatId, '⌛️ වීඩියෝව හඳුනා ගැනේ\.\.\. කරුණාකර මොහොතක් රැඳී සිටින්න\.', messageId);
                     
                     try {
                         const fdownUrl = "https://fdown.net/download.php";
@@ -75,7 +78,7 @@ export default {
 
                         const resultHtml = await fdownResponse.text();
                         
-                        // ** 2. Thumbnail, Title සහ Stats Scrap කිරීම (Improved RegEx V4) **
+                        // ** 2. Thumbnail, Title සහ Stats Scrap කිරීම (Improved RegEx V5) **
                         let videoUrl = null;
                         let thumbnailLink = null;
                         let videoTitle = "මාතෘකාවක් නොමැත";
@@ -89,38 +92,35 @@ export default {
                             console.log(`[SCRAP] Thumbnail found: ${thumbnailLink}`);
                         }
 
-                        // ** IMPROVED TITLE SCRAPING V4 **
-                        // Title එක සොයා ගැනීම: h4 ව්‍යුහය ඉලක්ක කර ගනිමු.
-                        const titleRegexV4 = /<h4[^>]*>([\s\S]*?)<\/h4>/i;
-                        let titleMatchV4 = resultHtml.match(titleRegexV4);
+                        // ** IMPROVED TITLE SCRAPING V5 **
+                        const titleRegexV5 = /<h4[^>]*>([\s\S]*?)<\/h4>/i;
+                        let titleMatchV5 = resultHtml.match(titleRegexV5);
                         
-                        if (titleMatchV4 && titleMatchV4[1]) {
+                        if (titleMatchV5 && titleMatchV5[1]) {
                             // sanitizeText function එක භාවිතා කර Title එක පිරිසිදු කිරීම
-                            let scrapedTitle = sanitizeText(titleMatchV4[1]);
+                            let scrapedTitle = sanitizeText(titleMatchV5[1]);
                             
-                            // "Video Title" වැනි Generic text තිබේ නම් එය මග හරින්න
                             if (scrapedTitle.length > 0 && scrapedTitle.toLowerCase() !== "video title") {
                                 videoTitle = scrapedTitle;
                             }
                         }
 
-                        // ** IMPROVED STATS SCRAPING V4 (Duration/Description) **
+                        // ** IMPROVED STATS SCRAPING V5 (Duration/Description) **
                         
                         // 1. Duration සොයා ගැනීම
-                        const durationRegexV4 = /Duration:\s*(\d+)\s*seconds/i;
-                        let durationMatchV4 = resultHtml.match(durationRegexV4);
+                        const durationRegexV5 = /Duration:\s*(\d+)\s*seconds/i;
+                        let durationMatchV5 = resultHtml.match(durationRegexV5);
 
-                        if (durationMatchV4 && durationMatchV4[1]) {
-                            videoStats = `දිග: ${durationMatchV4[1].trim()} තත්පර`;
+                        if (durationMatchV5 && durationMatchV5[1]) {
+                            videoStats = `දිග: ${sanitizeText(durationMatchV5[1].trim())} තත්පර`; // Stats ද sanitize කර ඇත
                         } else {
                             // 2. Description සොයා ගැනීම
-                            const descriptionRegexV4 = /Description:\s*([\s\S]+?)(?=<br>|<\/p>)/i;
-                            let descriptionMatchV4 = resultHtml.match(descriptionRegexV4);
+                            const descriptionRegexV5 = /Description:\s*([\s\S]+?)(?=<br>|<\/p>)/i;
+                            let descriptionMatchV5 = resultHtml.match(descriptionRegexV5);
                             
-                            if (descriptionMatchV4 && descriptionMatchV4[1]) {
-                                let scrapedDesc = sanitizeText(descriptionMatchV4[1]);
+                            if (descriptionMatchV5 && descriptionMatchV5[1]) {
+                                let scrapedDesc = sanitizeText(descriptionMatchV5[1]);
                                 
-                                // "No video description..." තිබේ නම් එය මග හරින්න
                                 if (scrapedDesc.toLowerCase() !== "no video description...") {
                                      videoStats = `විස්තරය: ${scrapedDesc}`;
                                 }
@@ -128,12 +128,12 @@ export default {
                         }
 
                         if (videoStats === "") {
-                            // videoTitle හි තිබූ HTML tags ඉවත් වීම නිසා
-                            if (videoTitle === "Where are videos saved after being downloaded?") {
+                            // Incorrect FAQ scraping check (V5 - sanitizeText භාවිතයෙන් පසු)
+                            if (videoTitle.includes("Where are videos saved after being downloaded")) {
                                 videoTitle = "මාතෘකාවක් නොමැත";
-                                videoStats = "FAQ කොටස Title ලෙස වැරදි ලෙස scrape වී ඇත. නිවැරදි Title එක සොයාගත නොහැක.";
+                                videoStats = "FAQ කොටස Title ලෙස වැරදි ලෙස scrape වී ඇත\. නිවැරදි Title එක සොයාගත නොහැක\.";
                             } else {
-                                videoStats = `විස්තර/දිග තොරතුරු නොමැත.`;
+                                videoStats = `විස්තර/දිග තොරතුරු නොමැත\.`;
                             }
                         }
 
@@ -173,13 +173,13 @@ export default {
                             console.log(`[SUCCESS] Video Link found (${quality}): ${cleanedUrl}`);
                             
                             // ** 4. නව Caption එක සකස් කිරීම සහ Length Limit Fix **
-                            // Title එක Markdown V2 Bold (**) වලින් ආවරණය කිරීම
+                            // Title එක Markdown V2 Bold (\*\* \*\*) වලින් ආවරණය කිරීම
                             let finalCaption = `**${videoTitle}**\n\nQuality: ${quality}\n${videoStats}\n\n[🔗 Original Link](${text})`;
                             
                             // Caption Length Limit එක පරීක්ෂා කිරීම (1024 characters)
                             if (finalCaption.length > 1024) {
                                 // Caption එක කපා දැමීම
-                                finalCaption = finalCaption.substring(0, 1000) + '... \\(Caption Truncated\\)'; // Markdown escape
+                                finalCaption = finalCaption.substring(0, 1000) + '\.\.\. \\(Caption Truncated\\)'; 
                             }
 
                             
@@ -188,17 +188,17 @@ export default {
                             
                         } else {
                             console.error(`[SCRAPING FAILED] No HD/Normal link found for ${text}.`);
-                            await this.sendMessage(telegramApi, chatId, '⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය. වීඩියෝව Private (පුද්ගලික) විය හැක.', messageId);
+                            await this.sendMessage(telegramApi, chatId, '⚠️ සමාවෙන්න\, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය\. වීඩියෝව Private \(පුද්ගලික\) විය හැක\.', messageId);
                         }
                         
                     } catch (fdownError) {
                         console.error("fdown.net/Scraping Error:", fdownError.message);
-                        await this.sendMessage(telegramApi, chatId, '❌ වීඩියෝව ලබා ගැනීමේදී තාක්ෂණික දෝෂයක් ඇති විය.', messageId);
+                        await this.sendMessage(telegramApi, chatId, '❌ වීඩියෝව ලබා ගැනීමේදී තාක්ෂණික දෝෂයක් ඇති විය\.', messageId);
                     }
                     
                 } else {
                     console.log(`[INVALID] Invalid message type from ${chatId}: ${text}`);
-                    await this.sendMessage(telegramApi, chatId, '❌ කරුණාකර වලංගු Facebook වීඩියෝ Link එකක් එවන්න.', messageId);
+                    await this.sendMessage(telegramApi, chatId, '❌ කරුණාකර වලංගු Facebook වීඩියෝ Link එකක් එවන්න\.', messageId);
                 }
             }
 
@@ -221,8 +221,9 @@ export default {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     chat_id: chatId,
-                    text: text,
-                    parse_mode: 'MarkdownV2', // MarkdownV2 භාවිතා කරනු ලැබේ
+                    // text parameter එකේ ඇති සියලුම text, MarkdownV2 format එකට අනුකූල විය යුතුය
+                    text: text, 
+                    parse_mode: 'MarkdownV2', 
                     ...(replyToMessageId && { reply_to_message_id: replyToMessageId }),
                 }),
             });
@@ -250,7 +251,7 @@ export default {
         const formData = new FormData();
         formData.append('chat_id', chatId);
         formData.append('caption', caption);
-        formData.append('parse_mode', 'MarkdownV2'); // MarkdownV2 භාවිතා කරනු ලැබේ
+        formData.append('parse_mode', 'MarkdownV2'); 
         if (replyToMessageId) {
             formData.append('reply_to_message_id', replyToMessageId);
         }
