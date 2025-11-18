@@ -1,10 +1,7 @@
 /**
  * src/index.js
  * Cloudflare Worker Telegram Bot Code (Facebook Video Downloader via fdown.net scraping)
- * * අවසන් නිවැරදි කිරීම්:
- * 1. fdown.net වෙත POST ඉල්ලීම සඳහා redirect: 'follow' යෙදීම.
- * 2. HD/Normal Quality Links නිවැරදි RegEx මඟින් Scrap කිරීම.
- * 3. Link Expiry/Wrong File ID ගැටලු මඟහරවා CDN Link එක Blob ලෙස Stream කරමින් Telegram වෙත යැවීම.
+ * * විශේෂාංග: HD/Normal Download, URL Cleanup, Thumbnail/Title Scraping, Blob Stream Upload.
  */
 
 export default {
@@ -13,7 +10,6 @@ export default {
             return new Response('Hello, I am your FDOWN Telegram Worker Bot.', { status: 200 });
         }
 
-        // Environment Variables (BOT_TOKEN) භාවිතා කරන්න
         const BOT_TOKEN = env.BOT_TOKEN;
         const telegramApi = `https://api.telegram.org/bot${BOT_TOKEN}`;
 
@@ -32,6 +28,7 @@ export default {
                     return new Response('OK', { status: 200 });
                 }
 
+                // Link වලංගුතාවය පරීක්ෂා කිරීම
                 const isLink = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.me)/i.test(text);
                 
                 if (isLink) {
@@ -44,7 +41,7 @@ export default {
                         const formData = new URLSearchParams();
                         formData.append('URLz', text); 
 
-                        // 1. fdown.net වෙත POST ඉල්ලීම යැවීම (redirect: 'follow' වැදගත්)
+                        // 1. fdown.net වෙත POST ඉල්ලීම යැවීම
                         const fdownResponse = await fetch(fdownUrl, {
                             method: 'POST',
                             headers: {
@@ -58,9 +55,43 @@ export default {
 
                         const resultHtml = await fdownResponse.text();
 
-                        // 2. HTML ප්‍රතිචාරයෙන් HD සහ Normal Video Links Scrap කිරීම
+                        // ** 2. Thumbnail, Title සහ Stats Scrap කිරීම **
                         let videoUrl = null;
+                        let thumbnailLink = null;
+                        let videoTitle = "මාතෘකාවක් නොමැත";
+                        let videoStats = "";
 
+                        // Thumbnail Link සොයා ගැනීම
+                        const thumbnailRegex = /<img[^>]+src=["']?([^"'\s]+)["']?[^>]*class=["']?fb_img["']?[^>]*>/i;
+                        let thumbnailMatch = resultHtml.match(thumbnailRegex);
+                        if (thumbnailMatch && thumbnailMatch[1]) {
+                            thumbnailLink = thumbnailMatch[1];
+                            console.log(`[SCRAP] Thumbnail found: ${thumbnailLink}`);
+                        }
+
+                        // Video Title සොයා ගැනීම
+                        const titleRegex = /<h4[^>]*>([\s\S]*?)<\/h4>/i;
+                        let titleMatch = resultHtml.match(titleRegex);
+                        if (titleMatch && titleMatch[1]) {
+                            videoTitle = titleMatch[1].trim().replace(/\n/g, ' '); // Line breaks ඉවත් කිරීම
+                        }
+
+                        // Video Description/Duration සොයා ගැනීම
+                        const descriptionRegex = /<p[^>]*>Description: ([\s\S]*?)<\/p>/i;
+                        let descriptionMatch = resultHtml.match(descriptionRegex);
+                        if (descriptionMatch && descriptionMatch[1] && descriptionMatch[1].trim() !== "No video description...") {
+                            videoStats = `විස්තරය: ${descriptionMatch[1].trim()}`;
+                        } else {
+                            const durationRegex = /Duration: (\d+) seconds/i;
+                            let durationMatch = resultHtml.match(durationRegex);
+                            if (durationMatch && durationMatch[1]) {
+                                videoStats = `දිග: ${durationMatch[1].trim()} තත්පර`;
+                            } else {
+                                videoStats = `විස්තර/දිග තොරතුරු නොමැත.`;
+                            }
+                        }
+
+                        // 3. HD සහ Normal Video Links Scrap කිරීම
                         const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>.*Download Video in HD Quality.*<\/a>/i;
                         let match = resultHtml.match(hdLinkRegex);
 
@@ -86,7 +117,6 @@ export default {
                                 console.warn("URL decoding failed, using raw URL.");
                             }
                             
-                            // .mp4 link එකේ මූලික කොටස පමණක් ලබා ගැනීමට උත්සාහ කිරීම (Cleanup)
                             let baseVideoUrlMatch = cleanedUrl.match(/(.*\.mp4\?.*)/i);
                             if (baseVideoUrlMatch && baseVideoUrlMatch[1]) {
                                 cleanedUrl = baseVideoUrlMatch[1];
@@ -95,12 +125,14 @@ export default {
                             const quality = hdLinkRegex.test(resultHtml) ? "HD" : "Normal";
                             console.log(`[SUCCESS] Video Link found (${quality}): ${cleanedUrl}`);
                             
-                            // 3. Telegram වෙත වීඩියෝව Stream කරමින් යැවීම (Blob Fix)
-                            await this.sendVideo(telegramApi, chatId, cleanedUrl, `මෙන්න ඔබගේ වීඩියෝව! ${quality} Quality එකෙන් download කර ඇත.`, messageId);
+                            // ** 4. නව Caption එක සකස් කිරීම **
+                            const finalCaption = `**${videoTitle}**\n\nQuality: ${quality}\n${videoStats}\n\n[🔗 Original Link](${text})`;
+                            
+                            // ** 5. sendVideo Function එකට Thumbnail Link එක සමඟ යැවීම **
+                            await this.sendVideo(telegramApi, chatId, cleanedUrl, finalCaption, messageId, thumbnailLink);
                             
                         } else {
                             console.error(`[SCRAPING FAILED] No HD/Normal link found for ${text}.`);
-                            
                             await this.sendMessage(telegramApi, chatId, '⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය. වීඩියෝව Private (පුද්ගලික) විය හැක.', messageId);
                         }
                         
@@ -135,7 +167,7 @@ export default {
                 body: JSON.stringify({
                     chat_id: chatId,
                     text: text,
-                    parse_mode: 'HTML',
+                    parse_mode: 'Markdown', // Markdown Format එක භාවිතා කරයි
                     ...(replyToMessageId && { reply_to_message_id: replyToMessageId }),
                 }),
             });
@@ -144,8 +176,8 @@ export default {
         }
     },
 
-    // ** වීඩියෝව Blob ලෙස Stream කරමින් Upload කරන නවතම Function එක **
-    async sendVideo(api, chatId, videoUrl, caption, replyToMessageId) {
+    // ** Thumbnail සහ Blob Stream සහිත sendVideo Function එක **
+    async sendVideo(api, chatId, videoUrl, caption, replyToMessageId, thumbnailLink = null) {
         
         // 1. Facebook CDN Link එක Fetch කිරීම
         const videoResponse = await fetch(videoUrl);
@@ -156,20 +188,36 @@ export default {
             return;
         }
         
-        // 2. Response body එක Blob එකක් ලෙස පරිවර්තනය කිරීම (File ID දෝෂය නිරාකරණය කරයි)
+        // 2. Response body එක Blob එකක් ලෙස පරිවර්තනය කිරීම
         const videoBlob = await videoResponse.blob();
         
-        // 3. Telegram 'sendVideo' API වෙත FormData ලෙස යැවීම
+        // 3. Telegram 'sendVideo' API වෙත FormData ලෙස යැවීම සකස් කිරීම
         const formData = new FormData();
         formData.append('chat_id', chatId);
         formData.append('caption', caption);
-        formData.append('parse_mode', 'HTML');
+        formData.append('parse_mode', 'Markdown'); 
         if (replyToMessageId) {
             formData.append('reply_to_message_id', replyToMessageId);
         }
         
-        // Blob එක නිවැරදි ගොනු නාමයක් සමඟ FormData එකට යැවීම
+        // වීඩියෝ ගොනුව Blob ලෙස යැවීම
         formData.append('video', videoBlob, 'video.mp4'); 
+
+        // ** 4. Thumbnail එකතු කිරීම (ඇත්නම්) **
+        if (thumbnailLink) {
+            try {
+                const thumbResponse = await fetch(thumbnailLink);
+                if (thumbResponse.ok) {
+                    const thumbBlob = await thumbResponse.blob();
+                    formData.append('thumb', thumbBlob, 'thumbnail.jpg');
+                    console.log("[TELEGRAM] Thumbnail added to upload.");
+                } else {
+                    console.warn("[SCRAP] Thumbnail fetch failed (Response not OK). Skipping thumbnail.");
+                }
+            } catch (e) {
+                console.error("[SCRAP] Error fetching thumbnail:", e.message);
+            }
+        }
 
         try {
             const telegramResponse = await fetch(`${api}/sendVideo`, {
@@ -181,7 +229,6 @@ export default {
             
             if (!telegramResponse.ok) {
                 console.error("[TELEGRAM UPLOAD ERROR] Status:", telegramResponse.status, "Message:", JSON.stringify(telegramResult));
-                // විශාල ගොනු ප්‍රමාණයේ දෝෂ හෝ වෙනත් දෝෂ
                 await this.sendMessage(api, chatId, `❌ වීඩියෝව යැවීම අසාර්ථකයි! (File Error). හේතුව: ${telegramResult.description || 'නොදන්නා දෝෂයක්.'}`, replyToMessageId);
             } else {
                 console.log("[TELEGRAM SUCCESS] Video successfully streamed and sent.");
