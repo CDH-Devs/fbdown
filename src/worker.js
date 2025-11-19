@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Final Fix V20: Robust Scraping (Link Found errors fix) + Correct Log Levels + Audio Button.
+ * Final Fix V21: HTML5 Video Tag Scraping added for better Link detection (Robust x 3).
  */
 
 // ** 1. MarkdownV2 හි සියලුම විශේෂ අක්ෂර Escape කිරීමේ Helper Function **
@@ -15,7 +15,6 @@ function sanitizeText(text) {
     let cleaned = text.replace(/<[^>]*>/g, '').trim(); 
     cleaned = cleaned.replace(/\s\s+/g, ' '); 
     cleaned = cleaned.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'); 
-    // Note: MarkdownV2 escape is NOT needed here as it's for internal use/logging only
     return cleaned;
 }
 
@@ -40,7 +39,6 @@ export default {
                 const messageId = callbackQuery.message.message_id;
                 const originalLink = data.replace('audio:', ''); 
                 
-                // User ට දැනුම් දීම
                 await this.answerCallbackQuery(telegramApi, callbackQuery.id, "Audio Link සොයමින්...");
 
                 if (data.startsWith('audio:')) {
@@ -76,7 +74,6 @@ export default {
                             audioUrl = audioMatch[1].replace(/&amp;/g, '&');
                             console.log(`[LOG] Audio Link (MP3) found.`);
                             
-                            // Title scraping (වඩා හොඳ caption එකකට)
                             const titleRegex = /<p[^>]*class=["']?card-text[^"']*["']?>\s*<strong[^>]*>Title:\s*<\/strong>\s*([\s\S]*?)<\/p>/i;
                             let titleMatch = resultHtml.match(titleRegex);
                             if (titleMatch && titleMatch[1]) {
@@ -84,16 +81,13 @@ export default {
                             }
 
                         } else {
-                            // ⚠️ Audio Link සොයා නොගැනීම Warning ලෙස Log කරයි
                             console.warn(`[WARNING] Audio Link NOT found on Fdown.net for: ${originalLink}`);
                         }
 
                     } catch (audioError) {
-                        // ❌ Audio Scraping දෝෂය Error ලෙස Log කරයි
                         console.error("!!! [ERROR] Audio Scraping Failed:", audioError);
                     }
                     
-                    // --- 1.2 Audio Sending ---
                     if (audioUrl) {
                          await this.sendAudio(telegramApi, chatId, audioUrl, escapeMarkdownV2(`🎧 *Audio Only* - ${videoTitle}`), messageId);
                     } else {
@@ -126,7 +120,6 @@ export default {
                         const fdownUrl = "https://fdown.net/download.php";
                         
                         const formData = new URLSearchParams();
-                        // ⚠️ V20 FIX: URL parameter name එක 'url' විය යුතුය
                         formData.append('url', text); 
                         formData.append('submit', 'Download');
 
@@ -154,16 +147,29 @@ export default {
                             console.log(`[LOG] Thumbnail found.`);
                         }
 
-                        // ✅ V20 FIX: Robust Link Scraping Regex
-                        const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>(?:Download Video in HD Quality|HD Video)<\/a>/i;
-                        let match = resultHtml.match(hdLinkRegex);
+                        // ** ✅ V21 FIX: 1. HTML5 Video Tag සෙවීම (Top Priority) **
+                        const html5VideoRegex = /<source[^>]+src=["']?([^"'\s]+)["']?[^>]*type=["']?video\/mp4["']?/i;
+                        let html5Match = resultHtml.match(html5VideoRegex);
+                        if (html5Match && html5Match[1]) {
+                            videoUrl = html5Match[1];
+                            console.log(`[LOG] HTML5 Video Tag Link found.`);
+                        }
 
-                        if (match && match[1]) {
-                            videoUrl = match[1]; 
-                            console.log(`[LOG] HD Video Link found.`);
-                        } else {
+                        // ** 2. HD Button සෙවීම **
+                        if (!videoUrl) {
+                            const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>(?:Download Video in HD Quality|HD Video)<\/a>/i;
+                            let match = resultHtml.match(hdLinkRegex);
+
+                            if (match && match[1]) {
+                                videoUrl = match[1]; 
+                                console.log(`[LOG] HD Video Link found.`);
+                            }
+                        }
+
+                        // ** 3. SD Button සෙවීම **
+                        if (!videoUrl) {
                             const sdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>(?:Download Video in Normal Quality|SD Video|Normal Video)<\/a>/i;
-                            match = resultHtml.match(sdLinkRegex);
+                            let match = resultHtml.match(sdLinkRegex);
 
                             if (match && match[1]) {
                                 videoUrl = match[1]; 
@@ -173,10 +179,7 @@ export default {
 
                         if (videoUrl) {
                             let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
-                            
-                            // Original link එක Audio button සඳහා යවයි
                             await this.sendVideo(telegramApi, chatId, cleanedUrl, null, messageId, thumbnailLink, text); 
-                            
                         } else {
                             // ⚠️ Video Link සොයා නොගැනීම Warning ලෙස Log කරයි
                             console.warn(`[WARNING] Video Link NOT found on Fdown.net for: ${text}`);
@@ -197,7 +200,6 @@ export default {
             return new Response('OK', { status: 200 });
 
         } catch (e) {
-            // ❌ Critical Unhandled Exception Error ලෙස Log කරයි
             console.error("!!! [CRITICAL ERROR] UNHANDLED EXCEPTION IN FETCH:", e);
             return new Response('OK', { status: 200 }); 
         }
@@ -207,7 +209,6 @@ export default {
     // සහායක Functions
     // ------------------------------------
     
-    // Callback Query Answer
     async answerCallbackQuery(api, callbackQueryId, text) {
         try {
              await fetch(`${api}/answerCallbackQuery`, {
@@ -242,7 +243,6 @@ export default {
         }
     },
     
-    // Send Audio
     async sendAudio(api, chatId, audioUrl, caption, replyToMessageId) {
         
         const audioResponse = await fetch(audioUrl);
@@ -287,7 +287,6 @@ export default {
         }
     },
 
-    // Send Video
     async sendVideo(api, chatId, videoUrl, caption = null, replyToMessageId, thumbnailLink = null, originalLink) {
         
         const videoResponse = await fetch(videoUrl);
@@ -355,10 +354,9 @@ export default {
             } else {
                  console.log("[LOG] Video successfully sent to Telegram.");
             }
-            
         } catch (e) {
             console.error("Error sending video to Telegram (Network/Timeout):", e);
-            // ✅ V20 FIX: Timeout/Network දෝෂය පිළිබඳ වඩාත් පැහැදිලි පණිවිඩයක්
+            // V20/V21 FIX: Timeout/Network දෝෂය පිළිබඳ වඩාත් පැහැදිලි පණිවිඩයක්
             await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Upload Timeout දෝෂයක් හෝ File Size එක වැඩියි)\\. *\\(Check Logs\\)*`), replyToMessageId);
         }
     }
