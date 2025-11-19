@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Final Fix V11: Updated Scraping Logic for fbdown.blog style HTML output.
+ * Final Fix V12: Added console.error() logging for better debugging in Cloudflare Dashboard.
  */
 
 // ** 1. MarkdownV2 හි සියලුම විශේෂ අක්ෂර Escape කිරීමේ Helper Function **
@@ -9,7 +9,7 @@ function escapeMarkdownV2(text) {
     return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\\\])/g, '\\$1');
 }
 
-// ** 2. Scraped Text Cleaner Function (MarkdownV2 escape) **
+// ** 2. Scraped Text Cleaner Function **
 function sanitizeText(text) {
     if (!text) return "";
     let cleaned = text.replace(/<[^>]*>/g, '').trim(); 
@@ -29,9 +29,6 @@ export default {
         const BOT_TOKEN = env.BOT_TOKEN;
         const telegramApi = `https://api.telegram.org/bot${BOT_TOKEN}`;
         
-        // ** V11 FIX: නව Download URL එක **
-        // fbdown.blog පිටුවේ POST URL එක මෙය යැයි උපකල්පනය කරමු.
-        // මෙය සාර්ථක නොවේ නම්, ඔබ එම වෙබ් අඩවියෙන් නිවැරදි API endpoint එක සොයා ගත යුතුය.
         const DOWNLOADER_URL = "https://fbdown.blog/FB-to-mp3-downloader"; 
 
         try {
@@ -56,8 +53,7 @@ export default {
                     try {
                         
                         const formData = new URLSearchParams();
-                        // නව වෙබ් අඩවිය භාවිතා කරන parameter නම 'url' හෝ 'q' වීමට ඉඩ ඇත.
-                        // පෙර කේතයේ භාවිතා කළ 'URLz' මෙහිදීත් තාවකාලිකව භාවිතා කරමු.
+                        // පරීක්ෂා කිරීම සඳහා 'URLz' භාවිතා කරමු.
                         formData.append('URLz', text); 
 
                         const downloaderResponse = await fetch(DOWNLOADER_URL, {
@@ -65,7 +61,6 @@ export default {
                             headers: {
                                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                                 'Content-Type': 'application/x-www-form-urlencoded',
-                                // Referer එක නව වෙබ් අඩවියට අනුව යාවත්කාලීන කර ඇත.
                                 'Referer': 'https://fbdown.blog/', 
                             },
                             body: formData.toString(),
@@ -77,36 +72,37 @@ export default {
                         let videoUrl = null;
                         let thumbnailLink = null;
                         
-                        // ** V11 FIX: නව Thumbnail Link සොයා ගැනීම (Screenshot එකට අනුව) **
+                        // Thumbnail Link Scraping
                         const thumbnailRegex = /<img[^>]+src=["']?([^"'\s]+)["']?[^>]*width=["']?300px["']?/i;
                         let thumbnailMatch = resultHtml.match(thumbnailRegex);
                         if (thumbnailMatch && thumbnailMatch[1]) {
                             thumbnailLink = thumbnailMatch[1];
                         }
 
-                        // ** V11 FIX: Download Link Scraping (Screenshot එකට අනුව) **
-                        // 'Download' යන text එක සහිත, target="_blank" attribute එක ඇති <a> tag එක සොයයි.
+                        // Video Link Scraping
                         const linkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*target=["']?_blank["']?[^>]*>Download<\/a>/i;
                         let match = resultHtml.match(linkRegex);
 
                         if (match && match[1]) {
                             videoUrl = match[1]; 
                         } 
-                        // වීඩියෝ URL එක සොයා ගැනීමට නොහැකි නම්, mp3/audio link එකක් සොයා ගැනීමට උත්සාහ කරන්න. (වීඩියෝවක් ලෙස යැවීමට නොහැකි වනු ඇත)
                         
                         if (videoUrl) {
                             let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
                             
-                            // V10/V11: Caption එක null ලෙස යවයි
+                            // වීඩියෝව යවයි
                             await this.sendVideo(telegramApi, chatId, cleanedUrl, null, messageId, thumbnailLink); 
                             
                         } else {
+                            // ** Debugging Log - Link සොයා ගැනීමට නොහැකි වූ විට **
+                            console.log(`Video URL not found. HTML snippet (1000 chars): ${resultHtml.substring(0, 1000)}`); 
                             await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය\\. \\(Private හෝ HTML ව්‍යුහය වෙනස් වී තිබිය හැක\\)'), messageId);
                         }
                         
                     } catch (fdownError) {
-                        // ජාල දෝෂය හෝ අනපේක්ෂිත දෝෂයක්.
-                        await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('❌ වීඩියෝ තොරතුරු ලබා ගැනීමේදී දෝෂයක් ඇති විය\\.'), messageId);
+                        // ** Debugging Log - API වෙත ඇමතුම් දීමේදී දෝෂයක් **
+                        console.error('FDOWN_API_ERROR:', fdownError.message); 
+                        await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('❌ වීඩියෝ තොරතුරු ලබා ගැනීමේදී දෝෂයක් ඇති විය\\. \\(Network හෝ URL වැරදි විය හැක\\)'), messageId);
                     }
                     
                 } else {
@@ -117,7 +113,8 @@ export default {
             return new Response('OK', { status: 200 });
 
         } catch (e) {
-            // ප්‍රධාන try/catch දෝෂ හැසිරවීම.
+            // ** Debugging Log - ප්‍රධාන Worker දෝෂය **
+            console.error('MAIN_WORKER_ERROR:', e.message);
             return new Response('OK', { status: 200 }); 
         }
     },
@@ -140,48 +137,53 @@ export default {
             });
         } catch (e) {
             // Error handling
+            console.error('SEND_MESSAGE_ERROR:', e.message);
         }
     },
 
     async sendVideo(api, chatId, videoUrl, caption = null, replyToMessageId, thumbnailLink = null) {
         
-        const videoResponse = await fetch(videoUrl);
+        // ... (වීඩියෝ යැවීමේ කේතය නොවෙනස්ව තබමු)
         
-        if (videoResponse.status !== 200) {
-            await this.sendMessage(api, chatId, escapeMarkdownV2(`⚠️ වීඩියෝව කෙලින්ම Upload කිරීමට අසාර්ථකයි\\. CDN වෙත පිවිසීමට නොහැක\\.\\n\\n*Direct URL:* ${videoUrl}`), replyToMessageId);
-            return;
-        }
-        
-        const videoBlob = await videoResponse.blob();
-        
-        const formData = new FormData();
-        formData.append('chat_id', chatId);
-        
-        if (caption) {
-            formData.append('caption', caption);
-            formData.append('parse_mode', 'MarkdownV2'); 
-        }
-        
-        if (replyToMessageId) {
-            formData.append('reply_to_message_id', replyToMessageId);
-        }
-        
-        // File name එක 'video.mp4' ලෙස යවයි.
-        formData.append('video', videoBlob, 'video.mp4'); 
-
-        if (thumbnailLink) {
-            try {
-                const thumbResponse = await fetch(thumbnailLink);
-                if (thumbResponse.ok) {
-                    const thumbBlob = await thumbResponse.blob();
-                    formData.append('thumb', thumbBlob, 'thumbnail.jpg');
-                } 
-            } catch (e) {
-                // Error handling for thumbnail
-            }
-        }
-
         try {
+            // වීඩියෝ Download කිරීම
+            const videoResponse = await fetch(videoUrl);
+            
+            if (videoResponse.status !== 200) {
+                console.error(`VIDEO_FETCH_ERROR: Status ${videoResponse.status} for URL ${videoUrl}`);
+                await this.sendMessage(api, chatId, escapeMarkdownV2(`⚠️ වීඩියෝව කෙලින්ම Upload කිරීමට අසාර්ථකයි\\. CDN වෙත පිවිසීමට නොහැක\\.\\n\\n*Direct URL:* ${videoUrl}`), replyToMessageId);
+                return;
+            }
+            
+            const videoBlob = await videoResponse.blob();
+            
+            const formData = new FormData();
+            formData.append('chat_id', chatId);
+            
+            if (caption) {
+                formData.append('caption', caption);
+                formData.append('parse_mode', 'MarkdownV2'); 
+            }
+            
+            if (replyToMessageId) {
+                formData.append('reply_to_message_id', replyToMessageId);
+            }
+            
+            formData.append('video', videoBlob, 'video.mp4'); 
+
+            if (thumbnailLink) {
+                try {
+                    const thumbResponse = await fetch(thumbnailLink);
+                    if (thumbResponse.ok) {
+                        const thumbBlob = await thumbResponse.blob();
+                        formData.append('thumb', thumbBlob, 'thumbnail.jpg');
+                    } 
+                } catch (e) {
+                    console.error('THUMBNAIL_FETCH_ERROR:', e.message);
+                }
+            }
+
+            // Telegram වෙත යැවීම
             const telegramResponse = await fetch(`${api}/sendVideo`, {
                 method: 'POST',
                 body: formData, 
@@ -190,10 +192,14 @@ export default {
             const telegramResult = await telegramResponse.json();
             
             if (!telegramResponse.ok) {
+                // ** Debugging Log - Telegram වෙත යැවීමේදී දෝෂයක් **
+                console.error(`TELEGRAM_SEND_ERROR: ${telegramResult.description}`);
                 await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි\\! \\(Error: ${telegramResult.description || 'නොදන්නා දෝෂයක්\\.'}\\)`), replyToMessageId);
             }
             
         } catch (e) {
+            // ** Debugging Log - sendVideo හි ජාල දෝෂය **
+            console.error('SEND_VIDEO_NETWORK_ERROR:', e.message);
             await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි\\! \\(Network හෝ Timeout දෝෂයක්\\)\\.`), replyToMessageId);
         }
     }
