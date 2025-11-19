@@ -1,12 +1,9 @@
 /**
  * src/index.js
- * Final Fix V19: Fixed "this.sendMessage is not a function" by defining Helper functions correctly
- * within the exported object and using direct function references (or `this` after binding).
- * * NOTE: The helper functions (sendMessage, sendVideo) MUST be methods of the exported object.
+ * Final Fix V21: Reverting to fbdown.blog (Confirmed working via Browser) with all structural fixes (V19).
  */
 
-// ** 1. Helper Functions (Global Scope, for internal use) **
-// (V17 හි fetch ඇතුළට ගෙනා functions නැවත fetch වලින් පිටතට ගෙන ඒම)
+// Global Helper Functions (V19 හි තිබූ පරිදි)
 function escapeMarkdownV2(text) {
     if (!text) return "";
     return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\\\])/g, '\\$1');
@@ -23,12 +20,8 @@ function sanitizeText(text) {
 
 export default {
     
-    // ------------------------------------
-    // සහායක Functions (Object Methods ලෙස තබයි)
-    // ------------------------------------
-
+    // ... (sendMessage and sendVideo methods here, unchanged from V19)
     async sendMessage(api, chatId, text, replyToMessageId) {
-        // V17/V18 හි තිබූ sendMessage කේතය
         try {
             await fetch(`${api}/sendMessage`, {
                 method: 'POST',
@@ -46,17 +39,11 @@ export default {
     },
 
     async sendVideo(api, chatId, videoUrl, caption = null, replyToMessageId, thumbnailLink = null) {
-        // V17/V18 හි තිබූ sendVideo කේතය
         try {
-            // ... (video fetching and sending logic)
             const videoResponse = await fetch(videoUrl);
             
             if (videoResponse.status !== 200) {
                 console.error(`VIDEO_FETCH_ERROR: Status ${videoResponse.status} for URL ${videoUrl}`);
-                // 🛠️ FIX: මෙහිදීද 'this.sendMessage' වෙනුවට සෘජු ඇමතීමක් කළ යුතු බැවින්, 
-                // sendVideo ශ්‍රිතය තුළ 'this.sendMessage' යන ඇමතුම වෙනුවට Global sendMessage ශ්‍රිතය
-                // භාවිතා කළ යුතු නම්, මෙම ශ්‍රිත fetch ඇතුළත තිබිය යුතුය. 
-                // නමුත් අපි තාවකාලිකව 'this.sendMessage' තබා බලමු, Cloudflare workers හිදී මෙය සාමාන්‍යයෙන් ක්‍රියාත්මක වේ.
                 await this.sendMessage(api, chatId, escapeMarkdownV2(`⚠️ වීඩියෝව කෙලින්ම Upload කිරීමට අසාර්ථකයි\\. CDN වෙත පිවිසීමට නොහැක\\.\\n\\n*Direct URL:* ${videoUrl}`), replyToMessageId);
                 return;
             }
@@ -65,7 +52,6 @@ export default {
             const formData = new FormData();
             formData.append('chat_id', chatId);
             
-            // ... (rest of sendVideo logic)
             if (caption) {
                 formData.append('caption', caption);
                 formData.append('parse_mode', 'MarkdownV2'); 
@@ -105,7 +91,6 @@ export default {
         }
     },
 
-
     async fetch(request, env, ctx) {
         if (request.method !== 'POST') {
             return new Response('Hello, I am your FDOWN Telegram Worker Bot.', { status: 200 });
@@ -114,9 +99,9 @@ export default {
         const BOT_TOKEN = env.BOT_TOKEN;
         const telegramApi = `https://api.telegram.org/bot${BOT_TOKEN}`;
         
-        const DOWNLOADER_URL = "https://fdown.net/download.php"; // V18: fdown.net වෙත ආපසු හරවයි
+        // ** V21 FIX: Downloader URL එක fbdown.blog වෙත නැවත හරවයි **
+        const DOWNLOADER_URL = "https://fbdown.blog/FB-to-mp3-downloader"; 
 
-        // 🛠️ FIX: `this.sendMessage` සහ `this.sendVideo` වෙනුවට සෘජු Reference සෑදීම
         const sendMessage = this.sendMessage.bind(this);
         const sendVideo = this.sendVideo.bind(this);
         
@@ -142,15 +127,17 @@ export default {
                     try {
                         
                         const formData = new URLSearchParams();
-                        formData.append('URLz', text); 
-                        formData.append('formID', 'downloadForm'); // fdown.net ට මෙය අවශ්‍ය වේ.
+                        // 'url' සහ 'locale' (Hidden Input) එකතු කරයි
+                        formData.append('url', text); 
+                        formData.append('locale', 'en'); 
 
                         const downloaderResponse = await fetch(DOWNLOADER_URL, {
                             method: 'POST',
                             headers: {
                                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                                 'Content-Type': 'application/x-www-form-urlencoded',
-                                'Referer': 'https://fdown.net/', 
+                                // Referer එක fbdown.blog වෙත හරවයි
+                                'Referer': 'https://fbdown.blog/', 
                             },
                             body: formData.toString(),
                             redirect: 'follow' 
@@ -161,37 +148,37 @@ export default {
                         let videoUrl = null;
                         let thumbnailLink = null;
                         
-                        // fdown.net Scraping Logic
-                        const linkRegex = /href="([^"]+)" download="[^"]+\.mp4"/i;
+                        // ** V21 FIX: fbdown.blog Scraping Logic **
+                        const thumbnailRegex = /<img[^>]+src=["']?([^"'\s]+)["']?[^>]*width=["']?300px["']?/i;
+                        let thumbnailMatch = resultHtml.match(thumbnailRegex);
+                        if (thumbnailMatch && thumbnailMatch[1]) {
+                            thumbnailLink = thumbnailMatch[1];
+                        }
+
+                        const linkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*target=["']?_blank["']?[^>]*>Download<\/a>/i;
                         let match = resultHtml.match(linkRegex);
 
                         if (match && match[1]) {
                             videoUrl = match[1]; 
                         } 
                         
-                        const thumbnailRegex = /<img[^>]+src="([^"]+)"[^>]*class="thumb"[^>]*>/i;
-                        let thumbnailMatch = resultHtml.match(thumbnailRegex);
-                        if (thumbnailMatch && thumbnailMatch[1]) {
-                            thumbnailLink = thumbnailMatch[1];
-                        }
-                        
                         if (videoUrl) {
                             let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
-                            await sendVideo(telegramApi, chatId, cleanedUrl, null, messageId, thumbnailLink); // 🛠️ FIX: sendVideo භාවිතා කරයි
+                            await sendVideo(telegramApi, chatId, cleanedUrl, null, messageId, thumbnailLink); 
                             
                         } else {
-                            // ** Debugging Log **
+                            // ** Debugging Log - Link සොයා ගැනීමට නොහැකි වූ විට **
                             console.log(`Video URL not found. HTML snippet (1000 chars): ${resultHtml.substring(0, 1000)}`); 
-                            await sendMessage(telegramApi, chatId, escapeMarkdownV2('⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය\\. \\(Private හෝ HTML ව්‍යුහය වෙනස් වී තිබිය හැක\\)'), messageId); // 🛠️ FIX: sendMessage භාවිතා කරයි
+                            await sendMessage(telegramApi, chatId, escapeMarkdownV2('⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය\\. \\(Private හෝ HTML ව්‍යුහය වෙනස් වී තිබිය හැක\\)'), messageId); 
                         }
                         
                     } catch (fdownError) {
                         console.error('FDOWN_API_ERROR:', fdownError.message); 
-                        await sendMessage(telegramApi, chatId, escapeMarkdownV2('❌ වීඩියෝ තොරතුරු ලබා ගැනීමේදී දෝෂයක් ඇති විය\\. \\(Network හෝ URL වැරදි විය හැක\\)'), messageId); // 🛠️ FIX: sendMessage භාවිතා කරයි
+                        await sendMessage(telegramApi, chatId, escapeMarkdownV2('❌ වීඩියෝ තොරතුරු ලබා ගැනීමේදී දෝෂයක් ඇති විය\\. \\(Network හෝ URL වැරදි විය හැක\\)'), messageId); 
                     }
                     
                 } else {
-                    await sendMessage(telegramApi, chatId, escapeMarkdownV2('❌ කරුණාකර වලංගු Facebook වීඩියෝ Link එකක් එවන්න\\.'), messageId); // 🛠️ FIX: sendMessage භාවිතා කරයි
+                    await sendMessage(telegramApi, chatId, escapeMarkdownV2('❌ කරුණාකර වලංගු Facebook වීඩියෝ Link එකක් එවන්න\\.'), messageId); 
                 }
             }
 
