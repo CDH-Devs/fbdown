@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Final Fix V15: Corrected POST Request and broader Regex for fbdownloader.to.
+ * Final Fix V16: Added comprehensive console.log debugging for fbdownloader.to scraping failures.
  * Requires: A KV Namespace bound as env.VIDEO_LINKS
  */
 
@@ -37,7 +37,7 @@ export default {
             const callbackQuery = update.callback_query;
 
             // -------------------------------------------------------------
-            // 🚀 1. CALLBACK QUERY HANDLING (Inline Button Clicks)
+            // 🚀 1. CALLBACK QUERY HANDLING (Inline Button Clicks) - Audio Extraction
             // -------------------------------------------------------------
             if (callbackQuery) {
                 const chatId = callbackQuery.message.chat.id;
@@ -59,6 +59,8 @@ export default {
                         await this.answerCallbackQuery(telegramApi, callbackQueryId, '⏳ Audio Link එක fbdownloader වෙතින් ලබා ගනිමින්...');
                         
                         try {
+                            console.log(`[DEBUG] Attempting to scrape Audio for URL: ${originalFbUrl}`);
+                            
                             // 2. fbdownloader.to වෙත නිවැරදි POST Request යැවීම
                             const fbDownloaderUrl = "https://fbdownloader.to/en"; // Action URL
                             const formData = new URLSearchParams();
@@ -69,7 +71,6 @@ export default {
                                 headers: {
                                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                                     'Content-Type': 'application/x-www-form-urlencoded',
-                                    // Referer එක නිවැරදිව සපයයි
                                     'Referer': 'https://fbdownloader.to/en/download-facebook-mp3', 
                                 },
                                 body: formData.toString(),
@@ -79,7 +80,6 @@ export default {
                             const resultHtml = await fbDownloaderResponse.text();
                             
                             // 3. Audio Link එක Scrape කිරීම
-                            // වඩාත් පුළුල් Regex එකක් භාවිතා කර Download Button එක සොයයි.
                             // Download Link එක බොහෝ විට "Download MP3" හෝ "Download" යන වචන සහිත button එකේ href එකේ ඇත.
                             const mp3LinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>(?:Download MP3|Download).*<\/a>/i;
                             let mp3Match = resultHtml.match(mp3LinkRegex);
@@ -90,14 +90,18 @@ export default {
                             }
 
                             if (finalAudioUrl && finalAudioUrl.startsWith('http')) {
-                                // 4. Audio යැවීම (Link එක වලංගු බවට සහතික කර)
+                                console.log(`[DEBUG] Found final Audio URL: ${finalAudioUrl}`);
+                                // 4. Audio යැවීම 
                                 await this.sendAudio(telegramApi, chatId, finalAudioUrl, messageId, videoTitle);
                             } else {
+                                // Scrape කිරීමට අසාර්ථක නම් - Debugging Logs
+                                console.log(`[ERROR] Audio Link not found. HTML Start: ${resultHtml.substring(0, 500)}`);
                                 await this.sendMessage(telegramApi, chatId, escapeMarkdownV2(`⚠️ සමාවෙන්න, fbdownloader\\.to වෙතින් Audio Link එක සොයා ගැනීමට නොහැකි විය\\. වීඩියෝව Private විය හැක\\.`));
                             }
                             
                         } catch (e) {
-                            // Network හෝ Parsing Error
+                            // Network හෝ Parsing Error - Debugging Logs
+                            console.error(`[FATAL ERROR] Audio scraping failed: ${e.stack}`);
                             await this.sendMessage(telegramApi, chatId, escapeMarkdownV2(`❌ Audio ලබා ගැනීමේදී දෝෂයක් ඇති විය\\.`));
                         }
 
@@ -200,6 +204,7 @@ export default {
                         }
                         
                     } catch (fdownError) {
+                        console.error(`[FATAL ERROR] Fdown scraping failed: ${fdownError.stack}`);
                         await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('❌ වීඩියෝ තොරතුරු ලබා ගැනීමේදී දෝෂයක් ඇති විය\\.'), messageId);
                     }
                     
@@ -211,7 +216,7 @@ export default {
             return new Response('OK', { status: 200 });
 
         } catch (e) {
-            // console.error(e.stack);
+            console.error(`[FATAL ERROR] Top-level handler failed: ${e.stack}`);
             return new Response('OK', { status: 200 });
         }
     },
@@ -220,7 +225,7 @@ export default {
     // සහායක Functions (Auxiliary Functions)
     // ------------------------------------
 
-    async sendMessage(api, chatId, text, replyToMessageId) {
+    async sendMessage(api, chatId, text, replyToMessageId, replyMarkup = null) {
         try {
             await fetch(`${api}/sendMessage`, {
                 method: 'POST',
@@ -230,6 +235,7 @@ export default {
                     text: text,
                     parse_mode: 'MarkdownV2',
                     ...(replyToMessageId && { reply_to_message_id: replyToMessageId }),
+                    ...(replyMarkup && { reply_markup: replyMarkup }), // Added replyMarkup for future flexibility
                 }),
             });
         } catch (e) {
