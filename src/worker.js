@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Final Fix V12: Fixed BUTTON_DATA_INVALID using KV Storage for Callback Data.
+ * Final Fix V14: Uses fdown.net for Video, and fbdownloader.to (via callback) for Audio.
  * Requires: A KV Namespace bound as env.VIDEO_LINKS
  */
 
@@ -20,6 +20,9 @@ function sanitizeText(text) {
 }
 
 export default {
+    // ------------------------------------
+    // ප්‍රධාන Fetch Handler එක
+    // ------------------------------------
     async fetch(request, env, ctx) {
         if (request.method !== 'POST') {
             return new Response('Hello, I am your FDOWN Telegram Worker Bot.', { status: 200 });
@@ -49,29 +52,74 @@ export default {
                     const randomId = parts[1]; // KV Key එක
                     const videoTitle = parts[2];
 
-                    await this.answerCallbackQuery(telegramApi, callbackQueryId, '⏳ Audio Link එක ලබා ගනිමින්...');
+                    // 1. KV Store එකෙන් Original Facebook Link එක ලබා ගැනීම 
+                    const originalFbUrl = await env.VIDEO_LINKS.get(randomId);
 
-                    // ** KV Store එකෙන් Original Link එක ලබා ගැනීම **
-                    const videoUrlForAudio = await env.VIDEO_LINKS.get(randomId);
+                    if (originalFbUrl) {
+                        await this.answerCallbackQuery(telegramApi, callbackQueryId, '⏳ Audio Link එක fbdownloader වෙතින් ලබා ගනිමින්...');
+                        
+                        try {
+                            // 2. fbdownloader.to වෙත POST Request යැවීම
+                            const fbDownloaderUrl = "https://fbdownloader.to/en/download-facebook-mp3";
+                            const formData = new URLSearchParams();
+                            formData.append('url', originalFbUrl); // Original Facebook Link එක යවයි
+                            formData.append('download-mp3', 'Download MP3'); // Form button එක simulate කරයි
 
-                    if (videoUrlForAudio) {
-                        // Audio යැවීම (Video Link එකම Audio ලෙස යවයි)
-                        await this.sendAudio(telegramApi, chatId, videoUrlForAudio, messageId, videoTitle);
+                            const fbDownloaderResponse = await fetch(fbDownloaderUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                    'Referer': fbDownloaderUrl,
+                                },
+                                body: formData.toString(),
+                                redirect: 'follow'
+                            });
+
+                            const resultHtml = await fbDownloaderResponse.text();
+                            
+                            // 3. Audio Link එක Scrape කිරීම
+                            // මෙහිදී fbdownloader.to වෙබ් අඩවියේ ඇති MP3 Download Link එක සොයා ගැනීමට උත්සාහ කරයි.
+                            const mp3LinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>.*Download MP3.*<\/a>/i;
+                            let mp3Match = resultHtml.match(mp3LinkRegex);
+                            
+                            let finalAudioUrl = null;
+                            if (mp3Match && mp3Match[1]) {
+                                finalAudioUrl = mp3Match[1].replace(/&amp;/g, '&'); // Link එක පිරිසිදු කරයි
+                            } else {
+                                // වෙනත් විකල්ප Audio Link එකක් සොයා ගැනීමට උත්සාහ කරයි (උදා: m4a)
+                                const m4aLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>.*Download M4A.*<\/a>/i;
+                                let m4aMatch = resultHtml.match(m4aLinkRegex);
+                                if (m4aMatch && m4aMatch[1]) {
+                                    finalAudioUrl = m4aMatch[1].replace(/&amp;/g, '&');
+                                }
+                            }
+
+                            if (finalAudioUrl) {
+                                // 4. Audio යැවීම
+                                await this.sendAudio(telegramApi, chatId, finalAudioUrl, messageId, videoTitle);
+                            } else {
+                                await this.sendMessage(telegramApi, chatId, escapeMarkdownV2(`⚠️ සමාවෙන්න, fbdownloader\\.to වෙතින් Audio Link එක සොයා ගැනීමට නොහැකි විය\\. වීඩියෝව Private විය හැක\\.`));
+                            }
+                            
+                        } catch (e) {
+                            await this.sendMessage(telegramApi, chatId, escapeMarkdownV2(`❌ Audio ලබා ගැනීමේදී දෝෂයක් ඇති විය\\.`));
+                        }
+
                     } else {
-                        // Link එක කල් ඉකුත් වී හෝ සොයා ගැනීමට නොහැකි නම්
-                        await this.sendMessage(telegramApi, chatId, escapeMarkdownV2(`⚠️ සමාවෙන්න, එම Audio Link එක කල් ඉකුත් වී ඇත\\. කරුණාකර නැවත වීඩියෝ Link එක එවන්න\\.`));
+                        // Link එක කල් ඉකුත් වී ඇත්නම්
+                        await this.sendMessage(telegramApi, chatId, escapeMarkdownV2(`⚠️ සමාවෙන්න, එම Link එක කල් ඉකුත් වී ඇත\\. කරුණාකර නැවත වීඩියෝ Link එක එවන්න\\.`));
                     }
 
                     return new Response('OK', { status: 200 });
                 }
                 
-                // වෙනත් callback queries සඳහා
                 await this.answerCallbackQuery(telegramApi, callbackQueryId, 'දත්ත හඳුනාගත නොහැක.');
                 return new Response('OK', { status: 200 });
             }
 
             // -------------------------------------------------------------
-            // 💬 2. MESSAGE HANDLING (Text/Links)
+            // 💬 2. MESSAGE HANDLING (Text/Links) - fdown.net භාවිතයෙන් Video Link ලබා ගනී
             // -------------------------------------------------------------
             if (message && message.text) {
                 const chatId = message.chat.id;
@@ -89,8 +137,8 @@ export default {
                     await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('⌛️ වීඩියෝව හඳුනා ගැනේ... කරුණාකර මොහොතක් රැඳී සිටින්න.'), messageId);
                     
                     try {
+                        // fdown.net භාවිතයෙන් Video Link සොයයි
                         const fdownUrl = "https://fdown.net/download.php";
-                        
                         const formData = new URLSearchParams();
                         formData.append('URLz', text);
                         
@@ -111,14 +159,7 @@ export default {
                         let videoUrl = null;
                         let thumbnailLink = null;
                         
-                        // Thumbnail Link සොයා ගැනීම
-                        const thumbnailRegex = /<img[^>]+class=["']?fb_img["']?[^>]*src=["']?([^"'\s]+)["']?/i;
-                        let thumbnailMatch = resultHtml.match(thumbnailRegex);
-                        if (thumbnailMatch && thumbnailMatch[1]) {
-                            thumbnailLink = thumbnailMatch[1];
-                        }
-
-                        // Link Scraping (HD වලට ප්‍රමුඛත්වය දී)
+                        // Link Scraping (fdown.net වෙතින් Video Link පමණක්)
                         const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>.*Download Video in HD Quality.*<\/a>/i;
                         let match = resultHtml.match(hdLinkRegex);
 
@@ -132,16 +173,22 @@ export default {
                                 videoUrl = match[1];
                             }
                         }
+                        
+                        const thumbnailRegex = /<img[^>]+class=["']?fb_img["']?[^>]*src=["']?([^"'\s]+)["']?/i;
+                        let thumbnailMatch = resultHtml.match(thumbnailRegex);
+                        if (thumbnailMatch && thumbnailMatch[1]) {
+                            thumbnailLink = thumbnailMatch[1];
+                        }
+
 
                         if (videoUrl) {
-                            let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
+                            let cleanedVideoUrl = videoUrl.replace(/&amp;/g, '&');
                             const videoTitle = 'Facebook Video'; 
                             
-                            // -------------------------------------------------------------
-                            // ** V12 FIX: KV Storage භාවිතයෙන් කෙටි ID එකක් නිර්මාණය කිරීම **
-                            // -------------------------------------------------------------
-                            const randomId = Math.random().toString(36).substring(2, 12); // අක්ෂර 10ක ID එකක්
-                            await env.VIDEO_LINKS.put(randomId, cleanedUrl, { expirationTtl: 3600 }); // පැයක් සඳහා ගබඩා කරයි
+                            // ** KV Storage එකට Original Facebook Link එක ගබඩා කිරීම **
+                            // Audio Button එක එබූ විට fbdownloader.to වෙත යැවීම සඳහා
+                            const randomId = Math.random().toString(36).substring(2, 12);
+                            await env.VIDEO_LINKS.put(randomId, text, { expirationTtl: 3600 }); // Original Link එක ගබඩා කරයි
 
                             const replyMarkup = {
                                 inline_keyboard: [
@@ -150,8 +197,8 @@ export default {
                                 ]
                             };
 
-                            // Caption එක null ලෙස යවා, Inline Button එක එකතු කරයි
-                            await this.sendVideo(telegramApi, chatId, cleanedUrl, null, messageId, thumbnailLink, replyMarkup);
+                            // Video එක යැවීම
+                            await this.sendVideo(telegramApi, chatId, cleanedVideoUrl, null, messageId, thumbnailLink, replyMarkup);
                             
                         } else {
                             await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය\\. වීඩියෝව Private (පුද්ගලික) විය හැක\\.'), messageId);
@@ -175,7 +222,7 @@ export default {
     },
 
     // ------------------------------------
-    // සහායක Functions
+    // සහායක Functions (Auxiliary Functions)
     // ------------------------------------
 
     async sendMessage(api, chatId, text, replyToMessageId) {
@@ -195,7 +242,7 @@ export default {
         }
     },
 
-    // ** V12: replyMarkup parameter එක එකතු කරයි **
+    // sendVideo (unchanged from V12/V13)
     async sendVideo(api, chatId, videoUrl, caption = null, replyToMessageId, thumbnailLink = null, replyMarkup = null) {
         
         const videoResponse = await fetch(videoUrl);
@@ -219,7 +266,6 @@ export default {
             formData.append('reply_to_message_id', replyToMessageId);
         }
         
-        // ** V12: Inline Keyboard එකතු කිරීම **
         if (replyMarkup) {
             formData.append('reply_markup', JSON.stringify(replyMarkup));
         }
@@ -254,8 +300,9 @@ export default {
         }
     },
 
-    // ** V12: Audio URL එක සෘජුවම යැවීම **
+    // sendAudio (unchanged - now receives MP3/M4A link)
     async sendAudio(api, chatId, audioUrl, replyToMessageId, title) {
+        // audioUrl යනු fbdownloader.to වෙතින් ලබාගත් MP3/M4A Link එකකි
         try {
             await fetch(`${api}/sendAudio`, {
                 method: 'POST',
@@ -275,7 +322,7 @@ export default {
         }
     },
 
-    // ** V12: Callback Answer යැවීම **
+    // answerCallbackQuery (unchanged)
     async answerCallbackQuery(api, callbackQueryId, text) {
         try {
             await fetch(`${api}/answerCallbackQuery`, {
