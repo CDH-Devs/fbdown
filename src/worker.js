@@ -1,8 +1,6 @@
-// ** මෙය සම්පූර්ණ V19 කේතයයි. මෙහි Log Levels නිවැරදිව යොදා ඇත. **
-
 /**
  * src/index.js
- * Final Fix V19: Inline Audio Only Button
+ * Final Fix V20: Robust Scraping (Link Found errors fix) + Correct Log Levels + Audio Button.
  */
 
 // ** 1. MarkdownV2 හි සියලුම විශේෂ අක්ෂර Escape කිරීමේ Helper Function **
@@ -17,7 +15,7 @@ function sanitizeText(text) {
     let cleaned = text.replace(/<[^>]*>/g, '').trim(); 
     cleaned = cleaned.replace(/\s\s+/g, ' '); 
     cleaned = cleaned.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'); 
-    // MarkdownV2 escape is NOT needed here as it's for internal use/logging only
+    // Note: MarkdownV2 escape is NOT needed here as it's for internal use/logging only
     return cleaned;
 }
 
@@ -34,7 +32,7 @@ export default {
         try {
             const update = await request.json();
 
-            // --- 1. CALLBACK QUERY HANDLING (NEW) ---
+            // --- 1. CALLBACK QUERY HANDLING (Audio Button) ---
             if (update.callback_query) {
                 const callbackQuery = update.callback_query;
                 const data = callbackQuery.data;
@@ -42,12 +40,12 @@ export default {
                 const messageId = callbackQuery.message.message_id;
                 const originalLink = data.replace('audio:', ''); 
                 
+                // User ට දැනුම් දීම
                 await this.answerCallbackQuery(telegramApi, callbackQuery.id, "Audio Link සොයමින්...");
 
                 if (data.startsWith('audio:')) {
                     console.log(`[LOG] Handling Audio Request for: ${originalLink}`);
                     
-                    // --- 1.1 Audio Link Scraping ---
                     let audioUrl = null;
                     let videoTitle = "Audio Download";
                     
@@ -70,13 +68,15 @@ export default {
 
                         const resultHtml = await fdownResponse.text();
 
+                        // Audio Only Link සොයා ගැනීම
                         const audioLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>\s*MP3\s*[^<]*<\/a>/i; 
                         let audioMatch = resultHtml.match(audioLinkRegex);
 
                         if (audioMatch && audioMatch[1]) {
                             audioUrl = audioMatch[1].replace(/&amp;/g, '&');
-                            console.log(`[LOG] Audio Link (MP3) found: ${audioUrl}`);
+                            console.log(`[LOG] Audio Link (MP3) found.`);
                             
+                            // Title scraping (වඩා හොඳ caption එකකට)
                             const titleRegex = /<p[^>]*class=["']?card-text[^"']*["']?>\s*<strong[^>]*>Title:\s*<\/strong>\s*([\s\S]*?)<\/p>/i;
                             let titleMatch = resultHtml.match(titleRegex);
                             if (titleMatch && titleMatch[1]) {
@@ -104,7 +104,7 @@ export default {
                 return new Response('OK', { status: 200 });
             }
 
-            // --- 2. MESSAGE HANDLING (Existing Logic) ---
+            // --- 2. MESSAGE HANDLING (Video Download) ---
             const message = update.message;
 
             if (message && message.text) {
@@ -126,6 +126,7 @@ export default {
                         const fdownUrl = "https://fdown.net/download.php";
                         
                         const formData = new URLSearchParams();
+                        // ⚠️ V20 FIX: URL parameter name එක 'url' විය යුතුය
                         formData.append('url', text); 
                         formData.append('submit', 'Download');
 
@@ -153,15 +154,15 @@ export default {
                             console.log(`[LOG] Thumbnail found.`);
                         }
 
-                        // Link Scraping (V18/V19 Robust Regex)
-                        const hdLinkRegex = /<a href="([^"]+)"[^>]*>\s*HD Video\s*<\/a>/i;
+                        // ✅ V20 FIX: Robust Link Scraping Regex
+                        const hdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>(?:Download Video in HD Quality|HD Video)<\/a>/i;
                         let match = resultHtml.match(hdLinkRegex);
 
                         if (match && match[1]) {
                             videoUrl = match[1]; 
                             console.log(`[LOG] HD Video Link found.`);
                         } else {
-                            const sdLinkRegex = /<a href="([^"]+)"[^>]*>\s*(?:SD|Normal)\s*Video\s*<\/a>/i;
+                            const sdLinkRegex = /<a[^>]+href=["']?([^"'\s]+)["']?[^>]*>(?:Download Video in Normal Quality|SD Video|Normal Video)<\/a>/i;
                             match = resultHtml.match(sdLinkRegex);
 
                             if (match && match[1]) {
@@ -173,13 +174,13 @@ export default {
                         if (videoUrl) {
                             let cleanedUrl = videoUrl.replace(/&amp;/g, '&');
                             
-                            // V19 FIX: Original link එක callback data ලෙස යවයි
-                            await this.sendVideo(telegramApi, chatId, cleanedUrl, null, messageId, thumbnailLink, text); 
+                            // Original link එක Audio button සඳහා යවයි
+                            await this.sendVideo(telegramApi, chatId, cleanedUrl, null, messageId, thumbnailLink, text); 
                             
                         } else {
                             // ⚠️ Video Link සොයා නොගැනීම Warning ලෙස Log කරයි
                             console.warn(`[WARNING] Video Link NOT found on Fdown.net for: ${text}`);
-                            await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය\\. වීඩියෝව Private (පුද්ගලික) විය හැක\\. *\\(Check Logs\\)*'), messageId);
+                            await this.sendMessage(telegramApi, chatId, escapeMarkdownV2('⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය\\. වීඩියෝව Private \\(පුද්ගලික\\) විය හැක\\. *\\(Check Logs\\)*'), messageId);
                         }
                         
                     } catch (fdownError) {
@@ -206,7 +207,7 @@ export default {
     // සහායක Functions
     // ------------------------------------
     
-    // V19 FIX: New Function to answer callback queries
+    // Callback Query Answer
     async answerCallbackQuery(api, callbackQueryId, text) {
         try {
              await fetch(`${api}/answerCallbackQuery`, {
@@ -215,7 +216,7 @@ export default {
                 body: JSON.stringify({
                     callback_query_id: callbackQueryId,
                     text: text,
-                    show_alert: false, // Simple notification
+                    show_alert: false, 
                 }),
             });
         } catch (e) {
@@ -241,13 +242,12 @@ export default {
         }
     },
     
-    // V19 FIX: New Function for sending Audio
+    // Send Audio
     async sendAudio(api, chatId, audioUrl, caption, replyToMessageId) {
         
         const audioResponse = await fetch(audioUrl);
         
         if (audioResponse.status !== 200) {
-            // ❌ Audio CDN දෝෂය Error ලෙස Log කරයි
             console.error(`[ERROR] Failed to fetch audio from CDN. Status: ${audioResponse.status}`);
             await this.sendMessage(api, chatId, escapeMarkdownV2(`⚠️ Audio file එක කෙලින්ම Upload කිරීමට අසාර්ථකයි\\. CDN වෙත පිවිසීමට නොහැක\\.`), replyToMessageId);
             return;
@@ -275,7 +275,6 @@ export default {
             const telegramResult = await telegramResponse.json();
             
             if (!telegramResponse.ok) {
-                // ❌ Telegram sendAudio දෝෂය Error ලෙස Log කරයි
                 console.error(`[ERROR] Telegram sendAudio failed: ${telegramResult.description || 'Unknown error'}`);
                 await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ Audio file එක යැවීම අසාර්ථකයි! (Error: ${telegramResult.description || 'නොදන්නා දෝෂයක්\\.'})`), replyToMessageId);
             } else {
@@ -283,19 +282,17 @@ export default {
             }
             
         } catch (e) {
-            // ❌ Audio Sending Network දෝෂය Error ලෙස Log කරයි
             console.error("Error sending audio to Telegram:", e);
             await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ Audio file එක යැවීම අසාර්ථකයි! (Network හෝ Timeout දෝෂයක්)\\.`), replyToMessageId);
         }
     },
 
-    // V19 FIX: sendVideo function එකට inline keyboard එකතු කරයි.
+    // Send Video
     async sendVideo(api, chatId, videoUrl, caption = null, replyToMessageId, thumbnailLink = null, originalLink) {
         
         const videoResponse = await fetch(videoUrl);
         
         if (videoResponse.status !== 200) {
-            // ❌ Video CDN දෝෂය Error ලෙස Log කරයි
             console.error(`[ERROR] Failed to fetch video from CDN. Status: ${videoResponse.status}`);
             await this.sendMessage(api, chatId, escapeMarkdownV2(`⚠️ වීඩියෝව කෙලින්ම Upload කිරීමට අසාර්ථකයි\\. CDN වෙත පිවිසීමට නොහැක\\. *\\(Check Logs\\)*`), replyToMessageId);
             return;
@@ -332,7 +329,7 @@ export default {
             }
         }
         
-        // V19 FIX: Inline Keyboard එකතු කිරීම
+        // Inline Keyboard (Audio Button) එකතු කිරීම
         const inlineKeyboard = {
             inline_keyboard: [
                 [{ 
@@ -353,7 +350,6 @@ export default {
             const telegramResult = await telegramResponse.json();
             
             if (!telegramResponse.ok) {
-                // ❌ Telegram sendVideo දෝෂය Error ලෙස Log කරයි
                 console.error(`[ERROR] Telegram sendVideo failed: ${telegramResult.description || 'Unknown error'}`);
                 await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Error: ${telegramResult.description || 'නොදන්නා දෝෂයක්\\.'}) *\\(Check Logs\\)*`), replyToMessageId);
             } else {
@@ -361,9 +357,9 @@ export default {
             }
             
         } catch (e) {
-            // ❌ Video Sending Network දෝෂය Error ලෙස Log කරයි
-            console.error("Error sending video to Telegram:", e);
-            await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Network හෝ Timeout දෝෂයක්)\\. *\\(Check Logs\\)*`), replyToMessageId);
+            console.error("Error sending video to Telegram (Network/Timeout):", e);
+            // ✅ V20 FIX: Timeout/Network දෝෂය පිළිබඳ වඩාත් පැහැදිලි පණිවිඩයක්
+            await this.sendMessage(api, chatId, escapeMarkdownV2(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Upload Timeout දෝෂයක් හෝ File Size එක වැඩියි)\\. *\\(Check Logs\\)*`), replyToMessageId);
         }
     }
 };
