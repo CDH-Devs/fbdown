@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Final Code V39 (Implements Thumbnail Pre-upload via sendPhoto and uses File ID for sendVideo)
+ * Final Code V40 (Fixes Thumbnail Display by separating sendPhoto and replying the progress text to the photo)
  * Developer: @chamoddeshan
  */
 
@@ -163,8 +163,8 @@ class WorkerHandlers {
         }
     }
 
-    // --- sendPhoto (to pre-upload thumbnail and get file_id) (V39 NEW) ---
-    async sendPhoto(chatId, photoUrl, replyToMessageId) {
+    // --- sendPhoto (to pre-upload thumbnail and get file_id) (V40 MODIFICATION) ---
+    async sendPhoto(chatId, photoUrl) { // Removed replyToMessageId
         try {
             const response = await fetch(`${telegramApi}/sendPhoto`, {
                 method: 'POST',
@@ -172,7 +172,7 @@ class WorkerHandlers {
                 body: JSON.stringify({
                     chat_id: chatId,
                     photo: photoUrl, // Direct URL to the photo
-                    reply_to_message_id: replyToMessageId,
+                    // Removed reply_to_message_id
                     caption: htmlBold("⏳ වීඩියෝ Thumbnail එක සකසයි..."),
                     parse_mode: 'HTML',
                 }),
@@ -515,27 +515,28 @@ export default {
                     return new Response('OK', { status: 200 });
                 }
 
-                // C. Facebook Link Handling (FDown Scraping & Video Sending) - V39 Logic
+                // C. Facebook Link Handling (FDown Scraping & Video Sending) - V40 Logic
                 if (text) { 
                     const isLink = /^https?:\/\/(www\.)?(facebook\.com|fb\.watch|fb\.me)/i.test(text);
                     
                     if (isLink) {
                         
                         let progressMessageId = null;
-                        let thumbnailMessageId = null; // New variable for Photo message ID
-                        let thumbnailFileId = null;    // New variable for Telegram File ID
+                        let thumbnailMessageId = null; 
+                        let thumbnailFileId = null;    
 
-                        // 1. Send Initial Progress Message (Text)
+                        // 1. Send Initial Progress Message (Text) - Reply to the user's message
                         const initialText = htmlBold('⌛️ වීඩියෝව හඳුනා ගැනේ... කරුණාකර මොහොතක් රැඳී සිටින්න.'); 
                         progressMessageId = await handlers.sendMessage(
                             chatId, 
                             initialText, 
-                            messageId, 
+                            messageId, // Reply to the user's original message
                             initialProgressKeyboard
                         );
                         
                         // 2. Start Progress Simulation in background
                         if (progressMessageId) {
+                            // Run the simulation in the background while scraping happens
                             ctx.waitUntil(handlers.simulateProgress(chatId, progressMessageId, messageId));
                         }
                         
@@ -584,15 +585,29 @@ export default {
                                 }
                             }
                             
-                            // 4. Pre-upload Thumbnail if link is found (V39 FIX)
-                            // This sends the photo and gets the Telegram File ID
-                            if (rawThumbnailLink && progressMessageId) {
+                            // 4. Pre-upload Thumbnail if link is found (V40 FIX: Send separately)
+                            if (rawThumbnailLink) {
                                 console.log(`[DEBUG] Pre-uploading thumbnail.`);
-                                const photoResult = await handlers.sendPhoto(chatId, rawThumbnailLink, progressMessageId);
+                                // Send photo to the chat (NOT replying yet)
+                                const photoResult = await handlers.sendPhoto(chatId, rawThumbnailLink); 
                                 thumbnailMessageId = photoResult.messageId;
                                 thumbnailFileId = photoResult.fileId;
-                            }
 
+                                // V40 Improvement: Update the progress text to reply to the thumbnail message 
+                                // to visually group them, replacing the original text progress message
+                                if (progressMessageId && thumbnailMessageId) {
+                                    // Delete the original text message (which replied to the user's link)
+                                    await handlers.deleteMessage(chatId, progressMessageId);
+                                    
+                                    // Re-send the text progress message, replying to the Photo Message
+                                    progressMessageId = await handlers.sendMessage(
+                                        chatId, 
+                                        initialText, 
+                                        thumbnailMessageId, // Reply to the Photo message ID
+                                        initialProgressKeyboard
+                                    );
+                                }
+                            }
 
                             // 5. Send Video or Error
                             if (videoUrl) {
@@ -622,6 +637,8 @@ export default {
                                 console.error(`[DEBUG] Video Link not found for: ${text}`);
                                 handlers.progressActive = false;
                                 const errorText = htmlBold('⚠️ සමාවෙන්න, වීඩියෝ Download Link එක සොයා ගැනීමට නොහැකි විය. වීඩියෝව Private (පුද්ගලික) විය හැක.');
+                                
+                                // Use the last valid progress message ID (which might be the one replying to the photo)
                                 if (progressMessageId) {
                                      await handlers.editMessage(chatId, progressMessageId, errorText); 
                                      // Delete thumbnail message if video failed
@@ -637,6 +654,7 @@ export default {
                              console.error(`[DEBUG] FDown Scraping Error (Chat ID: ${chatId}):`, fdownError);
                              handlers.progressActive = false;
                              const errorText = htmlBold('❌ වීඩියෝ තොරතුරු ලබා ගැනීමේදී දෝෂයක් ඇති විය.');
+                             
                              if (progressMessageId) {
                                  await handlers.editMessage(chatId, progressMessageId, errorText);
                                  if (thumbnailMessageId) {
