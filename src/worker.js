@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Final Code V47 (Fixes sendPhoto API failure by converting relative URL to absolute URL)
+ * Final Code V48 (Prioritizes Open Graph 'og:image' meta tag to find the true thumbnail URL)
  * Developer: @chamoddeshan
  */
 
@@ -163,34 +163,42 @@ export default {
                         let rawThumbnailLink = null;
                         
                         // 2. Get Thumbnail Link
-                        // V45 Regex: Using the unique style attribute
-                        const thumbnailRegex = /<img[^>]+style=["']?width:100%;max-height:240px;["']?[^>]*src=["']?([^"'\s]+)["']?/i;
-                        let thumbnailMatch = resultHtml.match(thumbnailRegex);
-                        
-                        // --- Console Logging: Thumbnail Match and HTML Check ---
-                        console.log(`[DEBUG] Thumbnail Regex Match Found: ${!!thumbnailMatch}`);
+                        // V48 FIX: Prioritize Open Graph (OG) meta tag (most reliable)
+                        const ogImageRegex = /<meta[^>]+property=["']?og:image["']?[^>]*content=["']?([^"'\s]+)["']?/i;
+                        let thumbnailMatch = resultHtml.match(ogImageRegex);
 
                         if (thumbnailMatch && thumbnailMatch[1]) {
-                            // Fix encoding
-                            let tempLink = thumbnailMatch[1].replace(/&amp;/g, '&'); 
-                            console.log(`[DEBUG] Raw Thumbnail URL (Encoded): ${tempLink}`);
+                            // If OG image found, use it directly (it's always an absolute URL)
+                            rawThumbnailLink = thumbnailMatch[1].replace(/&amp;/g, '&');
+                            console.log(`[DEBUG] Thumbnail Found: OG Meta Tag`);
+                        } else {
+                            // Secondary Check: Fallback to the style-based image tag (V45/V46 logic)
+                            console.log(`[DEBUG] Thumbnail Not Found in OG Tag. Falling back to <img> tag.`);
+                            const fallbackRegex = /<img[^>]+style=["']?width:100%;max-height:240px;["']?[^>]*src=["']?([^"'\s]+)["']?/i;
+                            thumbnailMatch = resultHtml.match(fallbackRegex);
+                            
+                            if (thumbnailMatch && thumbnailMatch[1]) {
+                                let tempLink = thumbnailMatch[1].replace(/&amp;/g, '&'); 
+                                rawThumbnailLink = tempLink;
+                                console.log(`[DEBUG] Thumbnail Found: Fallback <img> Tag`);
+                            }
+                        }
+                        
+                        // Process the final link
+                        if (rawThumbnailLink) {
+                            let finalLink = rawThumbnailLink;
+                            console.log(`[DEBUG] Raw Thumbnail URL: ${finalLink}`);
 
-                            // V47 FIX: Ensure the link is absolute by prefixing the base domain if it starts with a relative path
-                            if (tempLink.startsWith('img/') || tempLink.startsWith('/')) {
+                            // V47 FIX (Re-applied for safety): Ensure the link is absolute if it's a relative path like img/
+                            if (finalLink.startsWith('img/') || (finalLink.startsWith('/') && !finalLink.startsWith('//'))) {
                                 // Assume 'https://fdown.net/' is the base URL
-                                rawThumbnailLink = 'https://fdown.net/' + tempLink.replace(/^\//, ''); // Remove leading slash if present
+                                rawThumbnailLink = 'https://fdown.net/' + finalLink.replace(/^\//, ''); // Remove leading slash if present
                                 console.log(`[DEBUG] V47 FIX: Applied FDown prefix.`);
                             } else {
-                                rawThumbnailLink = tempLink;
+                                rawThumbnailLink = finalLink;
                             }
-                        } else {
-                            // If no thumbnail match, log the start of the received HTML
-                            console.error(`[ERROR] Thumbnail tag not found in HTML! Check FDown output.`);
-                            // V46 Marker
-                            console.log(`[DEBUG] ---> THUMBNAIL FAIL BLOCK EXECUTED <---`); 
-                            // Log the start of the received HTML response
-                            console.log(`[DEBUG] Start of FDown HTML (first 500 chars):\n${resultHtml.substring(0, 500)}`); 
                         }
+                        
                         console.log(`[DEBUG] Final Thumbnail Link: ${rawThumbnailLink}`);
 
                         // 3. (Optional) Check Video Links (Kept for full HTML analysis in Console Log)
@@ -214,7 +222,7 @@ export default {
                         }
 
                         // 4. Send Photo or Error
-                        if (rawThumbnailLink) {
+                        if (rawThumbnailLink && !rawThumbnailLink.endsWith('no-thumbnail-fndown.png')) {
                             
                             const photoMessageId = await handlers.sendPhoto(
                                 chatId, 
@@ -233,8 +241,13 @@ export default {
                             }
                             
                         } else {
-                            // Error: Link not found
-                            console.error(`[TEST] Thumbnail Link not found for: ${text}`);
+                            // Error: Link not found OR Default No-Thumbnail Image Found
+                            if (rawThumbnailLink && rawThumbnailLink.endsWith('no-thumbnail-fndown.png')) {
+                                console.error(`[TEST] Thumbnail Link found, but it is the default error image.`);
+                            } else {
+                                console.error(`[TEST] Thumbnail Link not found for: ${text}`);
+                            }
+                            
                             const errorText = htmlBold('⚠️ සමාවෙන්න, Thumbnail Link එක සොයා ගැනීමට නොහැකි විය.');
                             if (initialMessage) {
                                  // Reply to the initial message with the error (if it exists)
