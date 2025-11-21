@@ -1,8 +1,8 @@
 /**
  * src/index.js
- * Complete Code V54 (Auto Best Quality Upload/Link, Thumbnail via API, No Buttons)
- * - Large Videos (Duration > 5 mins) send the original Facebook URL for manual download via the site.
- * - Small Videos (Duration <= 5 mins) are directly uploaded to Telegram.
+ * Complete Code V55 (Reverting API URL as per user request)
+ * - Uses API: https://fdown.isuru.eu.org/info
+ * - Logic: Auto Best Quality, Upload/Link based on Duration (> 5 mins = Link)
  */
 
 // *****************************************************************
@@ -30,7 +30,6 @@ class WorkerHandlers {
     
     constructor(env) {
         this.env = env;
-        // KV binding is not used for buttons in this version.
     }
     
     // --- Telegram API Helpers ---
@@ -220,8 +219,8 @@ class WorkerHandlers {
 // *****************************************************************
 
 async function fetchVideoInfo(link) {
-    // Thumbnail, Metadata සහ Quality List සඳහා API කැඳවීම
-    const apiUrl = "https://fdown-fb-download.deno.dev/"; 
+    // ⭐️ USER REQUESTED API: Thumbnail, Metadata සහ Quality List සඳහා API කැඳවීම
+    const apiUrl = "https://fdown.isuru.eu.org/info"; 
     
     const apiResponse = await fetch(apiUrl, {
         method: 'POST',
