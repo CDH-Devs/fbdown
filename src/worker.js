@@ -1,6 +1,6 @@
 /**
  * src/index.js
- * Complete Code V60 (Enhanced Caption & Hybrid Mode)
+ * Complete Code V61 (Enhanced Caption & Hybrid Mode) - FIXED Duration and Date Formatting
  * - Video Link (Muxed/Working) is obtained via HTML Scraping (fdown.net/download.php).
  * - Metadata (Title, Thumbnail, Uploader, Duration, Views, Date) are obtained via JSON API.
  * - Caption format: Title + Metadata (Uploader, Duration, Views, Date).
@@ -24,13 +24,17 @@ function htmlBold(text) {
 }
 
 /**
- * Seconds to H:MM:SS or M:SS format.
+ * Seconds to H:MM:SS or M:SS format (Fixed to handle decimals and round off).
  */
 function formatDuration(seconds) {
     if (typeof seconds !== 'number' || seconds < 0) return 'N/A';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = seconds % 60;
+    
+    // ⭐️ FIX: Round the seconds to the nearest whole number to avoid long decimals
+    const totalSeconds = Math.round(seconds); 
+
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
     
     if (h > 0) {
         return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
@@ -48,6 +52,12 @@ function formatCaption(data) {
     const formattedDuration = formatDuration(duration);
     const formattedViews = typeof views === 'number' ? views.toLocaleString('en-US') : views;
     
+    // ⭐️ FIX: Format Upload Date from YYYYMMDD to YYYY-MM-DD
+    let formattedDate = uploadDate;
+    if (uploadDate && /^\d{8}$/.test(uploadDate)) {
+        formattedDate = uploadDate.substring(0, 4) + '-' + uploadDate.substring(4, 6) + '-' + uploadDate.substring(6, 8);
+    }
+    
     // Main Title
     let caption = htmlBold(videoTitle);
     
@@ -56,7 +66,7 @@ function formatCaption(data) {
     caption += `👤 ${htmlBold(uploader)}\n`;
     caption += `⏱️ Duration: ${htmlBold(formattedDuration)}\n`;
     caption += `👁️ Views: ${htmlBold(formattedViews)}\n`;
-    caption += `📅 Uploaded: ${htmlBold(uploadDate)}`;
+    caption += `📅 Uploaded: ${htmlBold(formattedDate)}`; // Use fixed date format
 
     return caption;
 }
@@ -262,7 +272,7 @@ class WorkerHandlers {
 // *****************************************************************
 
 /**
- * ⭐️ Function 1: Get Thumbnail/Title/Metadata from JSON API (V57 Logic)
+ * ⭐️ Function 1: Get Thumbnail/Title/Metadata from JSON API
  */
 async function getApiMetadata(link) {
     try {
@@ -297,7 +307,7 @@ async function getApiMetadata(link) {
             if (info.title) {
                 videoTitle = info.title;
             }
-            // Extracting new fields
+            // Extracting fields
             uploader = info.uploader || info.page_name || 'Unknown Uploader';
             duration = info.duration || 0;
             views = info.view_count || info.views || 0;
@@ -328,7 +338,7 @@ async function getApiMetadata(link) {
 
 
 /**
- * ⭐️ Function 2: Get Working Video Link from HTML Scraper (V58 Logic)
+ * ⭐️ Function 2: Get Working Video Link from HTML Scraper
  */
 async function scrapeVideoLink(link) {
     const fdownUrl = "https://fdown.net/download.php";
@@ -422,10 +432,12 @@ export default {
                     try {
                         // ⭐️ STEP 1: Get ALL Metadata from JSON API
                         const apiData = await getApiMetadata(text);
-                        const { thumbnailLink, videoTitle, uploader, duration, views, uploadDate } = apiData;
+                        // apiData now contains correctly formatted Duration/Date inside (when passed to formatCaption)
 
                         // Generate the final formatted caption
                         const finalCaption = formatCaption(apiData);
+                        const { thumbnailLink } = apiData;
+
 
                         // ⭐️ 1. Thumbnail Sending Logic (Used to display progress/title)
                         let photoMessageId = null;
@@ -437,7 +449,7 @@ export default {
                                 chatId, 
                                 thumbnailLink, 
                                 messageId,
-                                finalCaption
+                                finalCaption // Use the fixed caption
                             );
                             
                             if (photoMessageId && initialMessage) {
