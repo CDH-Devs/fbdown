@@ -1,7 +1,7 @@
 /**
  * src/index.js
- * Complete Code V55 (Reverting API URL as per user request)
- * - Uses API: https://fdown.isuru.eu.org/info
+ * Complete Code V57 (Reverting API URL as per user request, again)
+ * - Uses API: https://fdown.isuru.eu.org/info (Requested by user)
  * - Logic: Auto Best Quality, Upload/Link based on Duration (> 5 mins = Link)
  */
 
@@ -85,17 +85,17 @@ class WorkerHandlers {
         }
     }
 
-    // --- sendVideo (Download & Upload as Blob - Preserves Audio) ---
+    // --- sendVideo (Download & Upload as Blob - Mimics Site Referer) ---
     async sendVideo(chatId, videoUrl, caption = null, replyToMessageId = null, thumbnailLink = null) {
         
         console.log(`[DEBUG] Attempting to send video. URL: ${videoUrl.substring(0, 50)}...`);
         
         try {
-            // Download video with proper headers to get complete file with audio
+            // Download video using Referer header to mimic the fdown.net site download
             const videoResponse = await fetch(videoUrl, {
                 method: 'GET',
                 headers: {
-                    // Sound සහිත වීඩියෝව ලබා ගැනීමට උපකාරී වන Headers
+                    // ⭐️ SITE REQUIREMENT: This header makes the request look like it originated from fdown.net
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
                     'Referer': 'https://fdown.net/', 
                     'Accept': 'video/mp4,video/webm,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5',
@@ -219,7 +219,7 @@ class WorkerHandlers {
 // *****************************************************************
 
 async function fetchVideoInfo(link) {
-    // ⭐️ USER REQUESTED API: Thumbnail, Metadata සහ Quality List සඳහා API කැඳවීම
+    // ⭐️ USER REQUESTED API: Used only for Metadata, Thumbnail, and Download Links
     const apiUrl = "https://fdown.isuru.eu.org/info"; 
     
     const apiResponse = await fetch(apiUrl, {
@@ -383,19 +383,19 @@ export default {
                             const shouldSendLink = !duration || duration > MAX_UPLOAD_DURATION;
 
                             if (shouldSendLink) {
-                                // ❌ Send Original Facebook Link (Large Video)
+                                // ❌ Large Video: Direct user to fdown.net with the original link
                                 const linkMessage = `${htmlBold('📥 Video Download Link:')}\n`
                                     + `Quality: ${bestQuality}\n\n`
                                     + `⚠️ මෙම වීඩියෝව විශාල නිසා (>${MAX_UPLOAD_DURATION/60} mins) Telegram හරහා Upload කළ නොහැක. \n`
                                     + `බාගත කිරීම සඳහා, කරුණාකර පහත Link එක <a href="https://fdown.net/">fdown.net</a> වෙබ් අඩවිය වෙත යොමු කරන්න:\n`
                                     + `${htmlBold('Facebook Video Link:')}\n` 
-                                    + `${text}`; // ⬅️ මුල් Facebook Video Link එක යවයි
+                                    + `${text}`; 
                                 
                                 // Send the link as a new message, replying to the original link message
                                 await handlers.sendMessage(chatId, linkMessage, messageId);
 
                             } else {
-                                // ✅ Direct Upload (Small Video)
+                                // ✅ Small Video: Bot uploads, mimicking fdown.net via Referer
                                 const uploadText = htmlBold(`🔄 ${bestQuality} වීඩියෝව Upload කරමින්...`);
                                 let statusMessageId = photoMessageId || initialMessage;
                                 
@@ -403,7 +403,7 @@ export default {
                                 await handlers.editMessageText(chatId, statusMessageId, uploadText);
 
                                 const caption = `${htmlBold(videoTitle)}\n\n✅ ${bestQuality} Video Uploaded!`;
-                                // Pass the original message ID (for reply purposes) and the thumbnail URL
+                                // sendVideo uses Referer: https://fdown.net/ to satisfy the "via site" requirement
                                 const sentVideoId = await handlers.sendVideo(chatId, bestQualityLink, caption, messageId, rawThumbnailLink);
 
                                 if (sentVideoId) {
