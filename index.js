@@ -1,5 +1,3 @@
-// index.js
-
 import { WorkerHandlers } from './handlers';
 import { getApiMetadata, scrapeVideoLinkAndThumbnail } from './api';
 import { formatCaption, htmlBold } from './helpers';
