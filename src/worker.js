@@ -28,7 +28,7 @@ function htmlBold(text) {
 // Helper function to safely delete a message
 async function safeDeleteMessage(ctx, messageId) {
     try {
-        await ctx.api.deleteMessage(ctx.chat.id, messageId);
+        ctx.api.deleteMessage(ctx.chat.id, messageId);
     } catch (e) {
         console.error(`[WARN] Failed to delete message ${messageId}:`, e.message);
     }
@@ -294,12 +294,13 @@ export default {
         // Only handle POST requests from Telegram
         if (request.method === 'POST') {
             try {
-                // FIX: Pass only the request object to handleUpdate. 
-                // This resolves the "event.respondWith is not a function" error 
-                // by using the grammY 'cloudflare' callback correctly.
+                // NOTE: In the modern Cloudflare Worker fetch handler (request, env, ctx),
+                // the grammY 'cloudflare' adapter expects only the 'request' object.
+                // The error "event.respondWith is not a function" often indicates an issue
+                // with the worker environment's execution model or deployment settings.
                 return await handleUpdate(request);
             } catch (e) {
-                console.error("Webhook handling failed:", e.message);
+                console.error("Webhook handling failed:", e.message, e); // Changed to log full error object
                 // Return a successful response even on internal error to prevent Telegram retries
                 return new Response('Error handling update', { status: 500 });
             }
