@@ -250,7 +250,7 @@ export default {
                     }
                     
                     const quality = parts.pop(); // Last part is quality
-                    const videoKey = parts[1]; // Second part is videoKey
+                    const videoKey = parts.slice(1).join('_'); // Reconstruct videoKey (v_chatIdPrefix_timestamp)
 
                     // 1. Acknowledge and Update the Button Message
                     const loadingText = htmlBold(`🔄 ${quality} වීඩියෝව බාගත කිරීම ආරම්භ වේ...`);
