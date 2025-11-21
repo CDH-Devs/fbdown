@@ -1,7 +1,8 @@
 /**
  * src/index.js
- * Complete Code V52 (Thumbnail via API, Video Link Re-fetched on Click for Sound Fix)
- * Developer: @chamoddeshan
+ * Complete Code V54 (Auto Best Quality Upload/Link, Thumbnail via API, No Buttons)
+ * - Large Videos (Duration > 5 mins) send the original Facebook URL for manual download via the site.
+ * - Small Videos (Duration <= 5 mins) are directly uploaded to Telegram.
  */
 
 // *****************************************************************
@@ -9,6 +10,7 @@
 // *****************************************************************
 const BOT_TOKEN = '8382727460:AAEgKVISJN5TTuV4O-82sMGQDG3khwjiKR8'; 
 const OWNER_ID = '1901997764'; 
+const MAX_UPLOAD_DURATION = 300; // 5 minutes (300 seconds)
 // *****************************************************************
 
 // Telegram API Base URL
@@ -28,15 +30,11 @@ class WorkerHandlers {
     
     constructor(env) {
         this.env = env;
-        // Access KV binding named 'USER_DATABASE' as per wrangler.toml
-        this.kv = env.USER_DATABASE; 
-        if (!this.kv) {
-            console.error("[CRITICAL] KV Binding (USER_DATABASE) is not available in environment.");
-        }
+        // KV binding is not used for buttons in this version.
     }
     
-    // --- Telegram API Helpers (sendMessage remains the same) ---
-    async sendMessage(chatId, text, replyToMessageId, inlineKeyboard = null) {
+    // --- Telegram API Helpers ---
+    async sendMessage(chatId, text, replyToMessageId) {
         try {
             const response = await fetch(`${telegramApi}/sendMessage`, {
                 method: 'POST',
@@ -46,15 +44,10 @@ class WorkerHandlers {
                     text: text, 
                     parse_mode: 'HTML', 
                     ...(replyToMessageId && { reply_to_message_id: replyToMessageId }),
-                    // Include inline keyboard if provided
-                    ...(inlineKeyboard && { reply_markup: { inline_keyboard: inlineKeyboard } }),
                 }),
             });
             const result = await response.json();
             if (!response.ok) {
-                if (result.description === "Bad Request: BUTTON_DATA_INVALID") {
-                    console.error(`[ERROR] sendMessage API Failed: BUTTON_DATA_INVALID. Callback data length likely exceeded 64 bytes.`);
-                }
                 console.error(`sendMessage API Failed (Chat ID: ${chatId}):`, result);
                 return null;
             }
@@ -103,9 +96,9 @@ class WorkerHandlers {
             const videoResponse = await fetch(videoUrl, {
                 method: 'GET',
                 headers: {
-                    // ⭐️ Sound සහිත වීඩියෝව ලබා ගැනීමට උපකාරී වන Headers
+                    // Sound සහිත වීඩියෝව ලබා ගැනීමට උපකාරී වන Headers
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    'Referer': 'https://fdown.net/', // ⬅️ fdown.net Header එක
+                    'Referer': 'https://fdown.net/', 
                     'Accept': 'video/mp4,video/webm,video/*;q=0.9,application/ogg;q=0.7,audio/*;q=0.6,*/*;q=0.5',
                     'Accept-Language': 'en-US,en;q=0.5'
                 },
@@ -114,8 +107,7 @@ class WorkerHandlers {
             if (videoResponse.status !== 200) {
                 console.error(`[DEBUG] Video Fetch Failed! Status: ${videoResponse.status} for URL: ${videoUrl}`);
                 if (videoResponse.body) { await videoResponse.body.cancel(); }
-                await this.sendMessage(chatId, htmlBold(`⚠️ වීඩියෝව කෙලින්ම Upload කිරීමට අසාර්ථකයි. CDN වෙත පිවිසීමට නොහැක. (HTTP ${videoResponse.status})`), replyToMessageId);
-                return null;
+                return null; 
             }
             
             const videoBlob = await videoResponse.blob();
@@ -158,7 +150,6 @@ class WorkerHandlers {
             
             if (!telegramResponse.ok) {
                 console.error(`[DEBUG] sendVideo API Failed! Result:`, telegramResult);
-                await this.sendMessage(chatId, htmlBold(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Error: ${telegramResult.description || 'නොදන්නා දෝෂයක්.'})`), replyToMessageId);
                 return null;
             } else {
                 console.log(`[DEBUG] sendVideo successful.`);
@@ -167,28 +158,7 @@ class WorkerHandlers {
             
         } catch (e) {
             console.error(`[DEBUG] sendVideo General Error (Chat ID: ${chatId}):`, e);
-            await this.sendMessage(chatId, htmlBold(`❌ වීඩියෝව යැවීම අසාර්ථකයි! (Network හෝ Timeout දෝෂයක්).`), replyToMessageId);
             return null;
-        }
-    }
-
-    // --- answerCallbackQuery (Acknowledge and dismiss button loading) ---
-    async answerCallbackQuery(callbackQueryId, text = null) {
-        try {
-            await fetch(`${telegramApi}/answerCallbackQuery`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    callback_query_id: callbackQueryId,
-                    ...(text && { text: text }),
-                    show_alert: false, // Use true for serious errors
-                    cache_time: 0
-                }),
-            });
-            return true;
-        } catch (e) {
-            console.error(`[ERROR] answerCallbackQuery error:`, e);
-            return false;
         }
     }
 
@@ -250,8 +220,8 @@ class WorkerHandlers {
 // *****************************************************************
 
 async function fetchVideoInfo(link) {
-    // ⬅️ Thumbnail සහ Metadata සඳහා API කැඳවීම
-    const apiUrl = "https://fdown.isuru.eu.org/info";
+    // Thumbnail, Metadata සහ Quality List සඳහා API කැඳවීම
+    const apiUrl = "https://fdown-fb-download.deno.dev/"; 
     
     const apiResponse = await fetch(apiUrl, {
         method: 'POST',
@@ -269,28 +239,6 @@ async function fetchVideoInfo(link) {
     return apiResponse.json();
 }
 
-// ⭐️ නව Helper ශ්‍රිතය: Button Click එකේදී නැවුම් Link එකක් ලබා ගැනීමට API කැඳවීම
-async function fetchSpecificDownloadLink(facebookUrl, quality) {
-    try {
-        // නැවතත් API කැඳවනු ලැබේ.
-        const videoData = await fetchVideoInfo(facebookUrl); 
-        
-        if (videoData.available_formats) {
-            const selectedFormat = videoData.available_formats.find(f => f.quality === quality);
-            
-            if (selectedFormat && selectedFormat.url) {
-                console.log(`[DEBUG] Re-fetched and found link for ${quality}.`);
-                // &amp; නිවැරදි කිරීම
-                return selectedFormat.url.replace(/&amp;/g, '&');
-            }
-        }
-        return null;
-    } catch (e) {
-        console.error("[ERROR] Failed to re-fetch specific download link:", e);
-        return null;
-    }
-}
-
 
 export default {
     
@@ -299,98 +247,14 @@ export default {
             return new Response('Hello, I am your FDOWN Telegram Worker Bot.', { status: 200 });
         }
         
-        // KV binding (USER_DATABASE) is passed in the env object
         const handlers = new WorkerHandlers(env);
         
         try {
             const update = await request.json();
             
-            // --- C. Inline Button Click Handling (Callback Query) ---
+            // --- C. Inline Button Click Handling (Now empty) ---
             if (update.callback_query) {
-                const callbackQuery = update.callback_query;
-                const chatId = callbackQuery.message.chat.id;
-                const messageId = callbackQuery.message.message_id;
-                const data = callbackQuery.data; 
-
-                // Check if it's a download request (Format: dl_videoKey_quality)
-                if (data.startsWith('dl_')) {
-                    
-                    const parts = data.split('_');
-                    if (parts.length < 3) {
-                        await handlers.answerCallbackQuery(callbackQuery.id, "Invalid callback data.");
-                        return new Response('OK', { status: 200 });
-                    }
-                    
-                    const quality = parts.pop(); // Last part is quality
-                    const videoKey = parts.slice(1).join('_'); // Reconstruct videoKey (v_chatIdPrefix_timestamp)
-
-                    // 1. Acknowledge and Update the Button Message
-                    const loadingText = htmlBold(`🔄 ${quality} වීඩියෝව බාගත කිරීම ආරම්භ වේ...`);
-                    // Note: We remove buttons here, but we don't delete the KV yet.
-                    await handlers.editMessageText(chatId, messageId, loadingText, []); 
-                    await handlers.answerCallbackQuery(callbackQuery.id, `Starting ${quality} download...`);
-
-                    try {
-                        let videoTitle = 'Facebook Video';
-                        let originalLink = null;
-                        
-                        // --- KV Read and Process Logic ---
-                        if (!handlers.kv) {
-                            throw new Error("KV Database not available for download.");
-                        }
-
-                        // Retrieve data from KV
-                        const kvDataString = await handlers.kv.get(videoKey);
-                        if (!kvDataString) {
-                            await handlers.editMessageText(chatId, messageId, htmlBold('❌ වීඩියෝ තොරතුරු කල් ඉකුත් වී ඇත. නැවත සබැඳිය එවන්න.'));
-                            return new Response('OK', { status: 200 });
-                        }
-                        
-                        const kvData = JSON.parse(kvDataString);
-                        videoTitle = kvData.title || videoTitle;
-                        originalLink = kvData.originalLink; // ⭐️ KV එකෙන් මුල් link එක ලබා ගැනීම
-
-                        if (!originalLink) {
-                            await handlers.editMessageText(chatId, messageId, htmlBold(`❌ මුල් සබැඳිය සොයා ගැනීමට නොහැකි විය (KV Error).`));
-                            return new Response('OK', { status: 200 });
-                        }
-
-                        // ⭐️ Site Logic එක අනුකරණය කරමින්, නැවුම් Download Link එක ලබා ගැනීම
-                        const downloadLink = await fetchSpecificDownloadLink(originalLink, quality);
-
-                        // ***********************************************
-                        // *** FIX: REMOVED KV DELETION STEP *** (V51 Fix)
-                        // ***********************************************
-                        
-                        if (!downloadLink) {
-                            await handlers.editMessageText(chatId, messageId, htmlBold(`❌ ${quality} වීඩියෝ ලින්ක් එක සොයා ගැනීමට නොහැකි විය (Link Re-fetch Failed).`));
-                            return new Response('OK', { status: 200 });
-                        }
-
-                        // 4. Send the Video
-                        const caption = `${htmlBold(videoTitle)}\n\n📥 ${quality} Video Downloaded!`;
-                        
-                        // Note: thumbnailLink is null here, but sendVideo attempts to fetch thumbnail if provided
-                        const sentVideoId = await handlers.sendVideo(chatId, downloadLink, caption, null, null); 
-
-                        if (sentVideoId) {
-                            // 5. Success: Edit the original button message
-                            await handlers.editMessageText(
-                                chatId, 
-                                messageId, 
-                                htmlBold(`✅ ${quality} වීඩියෝව සාර්ථකව යවන ලදී!`)
-                            );
-                        } else {
-                            // 6. Failure to send video
-                            await handlers.editMessageText(chatId, messageId, htmlBold('❌ Video එක යැවීම අසාර්ථක විය. කරුණාකර නැවත උත්සහා කරන්න.'));
-                        }
-
-                    } catch (e) {
-                        console.error("[ERROR] Download Callback API Error (KV/Send):", e);
-                        await handlers.editMessageText(chatId, messageId, htmlBold('⚠️ වීඩියෝව බාගත කිරීමේ දෝෂයක්. කරුණාකර නැවත උත්සහා කරන්න.'));
-                    }
-                }
-                
+                // Ignore any old callback queries since buttons are removed
                 return new Response('OK', { status: 200 });
             }
 
@@ -404,7 +268,7 @@ export default {
 
             const chatId = message.chat.id;
             const messageId = message.message_id;
-            const text = message.text ? message.text.trim() : null; 
+            const text = message.text ? message.text.trim() : null; // Original Facebook Link
             
             const userName = message.from.first_name || "User"; 
 
@@ -434,8 +298,6 @@ export default {
                         // Use Facebook Video Download API (Thumbnail & Metadata)
                         const videoData = await fetchVideoInfo(text);
                         
-                        console.log(`[DEBUG] API Response:`, JSON.stringify(videoData));
-                        
                         // Metadata Extraction Logic
                         let rawThumbnailLink = null;
                         let videoTitle = 'Facebook Video';
@@ -459,25 +321,14 @@ export default {
                             uploadDate = info.upload_date;
                         }
                         
-                        // Thumbnail Sending Logic
+                        // ⭐️ 1. Thumbnail Sending Logic
                         let photoMessageId = null;
                         
                         if (rawThumbnailLink) {
-                            // ... (Caption formatting)
-                            let durationText = '';
-                            if (duration) {
-                                const minutes = Math.floor(duration / 60);
-                                const seconds = Math.floor(duration % 60);
-                                durationText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-                            }
+                            
+                            let durationText = duration ? `${Math.floor(duration / 60)}:${Math.floor(duration % 60).toString().padStart(2, '0')}` : '';
                             let viewCountText = viewCount ? (typeof viewCount === 'string' ? viewCount : viewCount.toLocaleString()) : '';
-                            let uploadDateText = '';
-                            if (uploadDate && uploadDate.length === 8) {
-                                const year = uploadDate.substring(0, 4);
-                                const month = uploadDate.substring(4, 6);
-                                const day = uploadDate.substring(6, 8);
-                                uploadDateText = `${year}-${month}-${day}`;
-                            }
+                            let uploadDateText = uploadDate && uploadDate.length === 8 ? `${uploadDate.substring(0, 4)}-${uploadDate.substring(4, 6)}-${uploadDate.substring(6, 8)}` : '';
                             
                             let caption = `${htmlBold(videoTitle)}\n\n`;
                             if (uploader) caption += `👤 ${uploader}\n`;
@@ -496,80 +347,82 @@ export default {
                             if (photoMessageId && initialMessage) {
                                 handlers.deleteMessage(chatId, initialMessage); 
                             } else {
-                                await handlers.editMessageText(chatId, initialMessage, htmlBold('⚠️ Thumbnail එක යැවීම අසාර්ථක විය. Quality Buttons යවමින්...'));
+                                await handlers.editMessageText(chatId, initialMessage, htmlBold('⚠️ Thumbnail එක යැවීම අසාර්ථක විය. Video Processing කරමින්...'));
                                 photoMessageId = initialMessage; 
                             }
                         } else if (initialMessage) {
-                             await handlers.editMessageText(chatId, initialMessage, htmlBold('⚠️ සමාවෙන්න, මේ Video එකේ Thumbnail එක සොයා ගැනීමට නොහැකි විය. Quality Buttons යවමින්...'));
+                             await handlers.editMessageText(chatId, initialMessage, htmlBold('⚠️ සමාවෙන්න, මේ Video එකේ Thumbnail එක සොයා ගැනීමට නොහැකි විය. Video Processing කරමින්...'));
                              photoMessageId = initialMessage;
                         }
+
+                        // ⭐️ 2. Best Quality Link Determination
+                        let bestQualityLink = null;
+                        let bestQuality = 'SD';
                         
-                        // Send quality selection buttons after thumbnail
-                        if (videoData.available_formats && videoData.available_formats.length > 0) {
+                        if (videoData.available_formats) {
+                            const qualityOrder = { '1920p': 5, '1080p': 4, '720p': 3, '480p': 2, '360p': 1 };
                             
-                            // --- KV Logic Start ---
-                            if (!handlers.kv) {
-                                console.error("[CRITICAL] USER_DATABASE KV binding is missing.");
-                                await handlers.sendMessage(chatId, htmlBold('❌ දත්ත ගබඩාව (KV) නොමැත. කරුණාකර Bot සකස් කරන්න.'), messageId);
-                                return new Response('OK', { status: 200 });
-                            }
-                            
-                            const chatIdStr = String(chatId);
-                            const timestamp = Math.floor(Date.now() / 1000);
-                            const videoKey = `v_${chatIdStr.substring(0, 8)}_${timestamp}`; 
-
-                            // Available qualities for buttons
-                            const availableQualities = [];
-                            videoData.available_formats.forEach(format => {
-                                if (!availableQualities.includes(format.quality)) {
-                                    availableQualities.push(format.quality);
+                            const bestFormat = videoData.available_formats.reduce((best, current) => {
+                                const bestScore = qualityOrder[best.quality] || 0;
+                                const currentScore = qualityOrder[current.quality] || 0;
+                                
+                                if (currentScore > bestScore && current.url) {
+                                    return current;
                                 }
-                            });
+                                return best;
+                            }, { quality: '0p', url: null });
 
-                            // Sort qualities
-                            const qualityOrder = ['360p', '480p', '720p', '1080p', '1920p'];
-                            availableQualities.sort((a, b) => {
-                                const aIndex = qualityOrder.indexOf(a);
-                                const bIndex = qualityOrder.indexOf(b);
-                                const aSort = aIndex === -1 ? 999 : aIndex;
-                                const bSort = bIndex === -1 ? 999 : bIndex;
-                                return aSort - bSort;
-                            });
+                            bestQualityLink = bestFormat.url ? bestFormat.url.replace(/&amp;/g, '&') : null;
+                            bestQuality = bestFormat.quality !== '0p' ? bestFormat.quality : 'SD';
+                        }
 
-                            // ⭐️ KV තුළ මුල් Link එක පමණක් ගබඩා කරයි (Download Links නොවේ)
-                            const kvData = { 
-                                title: videoTitle, 
-                                originalLink: text, // ⭐️ මුල් Facebook Link එක
-                                availableQualities: availableQualities
-                            };
+                        // ⭐️ 3. Upload or Send Link Decision
+                        
+                        if (bestQualityLink) {
                             
-                            await handlers.kv.put(videoKey, JSON.stringify(kvData), { expirationTtl: 3600 });
-                            console.log(`[SUCCESS] Data stored in KV with key: ${videoKey}`);
-                            
-                            // Create buttons
-                            const qualityButtons = availableQualities.map(quality => [{
-                                text: `📥 Download ${quality}`,
-                                callback_data: `dl_${videoKey}_${quality}` 
-                            }]);
-                            
-                            // --- KV Logic End ---
+                            // Check if the video is too long (Duration check)
+                            const shouldSendLink = !duration || duration > MAX_UPLOAD_DURATION;
 
-                            // Send the message with the inline keyboard
-                            await handlers.sendMessage(
-                                chatId,
-                                `${htmlBold('🎥 Video Quality එකක් තෝරන්න:')}\n${videoTitle}`,
-                                photoMessageId ? null : messageId, 
-                                qualityButtons  
-                            );
-                            
-                            console.log("[SUCCESS] Quality selection buttons prepared and sent.");
-                        } else {
-                            // No formats found error
-                            const errorText = htmlBold('❌ වීඩියෝ බාගත කිරීමේ Format සොයා ගැනීමට නොහැකි විය. කරුණාකර නැවත උත්සහා කරන්න.');
-                            if (initialMessage && !rawThumbnailLink) {
-                                await handlers.editMessageText(chatId, initialMessage, errorText);
+                            if (shouldSendLink) {
+                                // ❌ Send Original Facebook Link (Large Video)
+                                const linkMessage = `${htmlBold('📥 Video Download Link:')}\n`
+                                    + `Quality: ${bestQuality}\n\n`
+                                    + `⚠️ මෙම වීඩියෝව විශාල නිසා (>${MAX_UPLOAD_DURATION/60} mins) Telegram හරහා Upload කළ නොහැක. \n`
+                                    + `බාගත කිරීම සඳහා, කරුණාකර පහත Link එක <a href="https://fdown.net/">fdown.net</a> වෙබ් අඩවිය වෙත යොමු කරන්න:\n`
+                                    + `${htmlBold('Facebook Video Link:')}\n` 
+                                    + `${text}`; // ⬅️ මුල් Facebook Video Link එක යවයි
+                                
+                                // Send the link as a new message, replying to the original link message
+                                await handlers.sendMessage(chatId, linkMessage, messageId);
+
                             } else {
+                                // ✅ Direct Upload (Small Video)
+                                const uploadText = htmlBold(`🔄 ${bestQuality} වීඩියෝව Upload කරමින්...`);
+                                let statusMessageId = photoMessageId || initialMessage;
+                                
+                                // Update the message text to show uploading status
+                                await handlers.editMessageText(chatId, statusMessageId, uploadText);
+
+                                const caption = `${htmlBold(videoTitle)}\n\n✅ ${bestQuality} Video Uploaded!`;
+                                // Pass the original message ID (for reply purposes) and the thumbnail URL
+                                const sentVideoId = await handlers.sendVideo(chatId, bestQualityLink, caption, messageId, rawThumbnailLink);
+
+                                if (sentVideoId) {
+                                    // Success: Delete the status message
+                                    handlers.deleteMessage(chatId, statusMessageId);
+                                } else {
+                                    // Failure: Edit status message to show failure
+                                    await handlers.editMessageText(chatId, statusMessageId, htmlBold('❌ Video Upload කිරීම අසාර්ථක විය. කරුණාකර නැවත උත්සහා කරන්න.'));
+                                }
+                            }
+
+                        } else {
+                             // No format found error
+                            const errorText = htmlBold('❌ වීඩියෝ බාගත කිරීමේ Format සොයා ගැනීමට නොහැකි විය. කරුණාකර නැවත උත්සහා කරන්න.');
+                            if (photoMessageId && photoMessageId !== initialMessage) {
                                 await handlers.sendMessage(chatId, errorText, messageId);
+                            } else if (initialMessage) {
+                                await handlers.editMessageText(chatId, initialMessage, errorText);
                             }
                         }
                         
