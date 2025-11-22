@@ -1,3 +1,5 @@
+// handlers.js
+
 import { htmlBold } from './helpers';
 import { 
     PROGRESS_STATES 
@@ -109,7 +111,6 @@ class WorkerHandlers {
     
     async answerCallbackQuery(callbackQueryId, text) {
         try {
-            // this.telegramApi භාවිතා කරයි
             await fetch(`${this.telegramApi}/answerCallbackQuery`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -196,7 +197,6 @@ class WorkerHandlers {
                 }));
             }
 
-            // this.telegramApi භාවිතා කරයි
             const telegramResponse = await fetch(`${this.telegramApi}/sendVideo`, {
                 method: 'POST',
                 body: formData, 
@@ -251,14 +251,12 @@ class WorkerHandlers {
             
             const totalUsers = userKeys.length;
             
-            // this.telegramApi භාවිතා කරයි
             const copyMessageUrl = `${this.telegramApi}/copyMessage`; 
             
             for (let i = 0; i < totalUsers; i += BATCH_SIZE) {
                 const batch = userKeys.slice(i, i + BATCH_SIZE);
                 
                 const sendPromises = batch.map(async (userId) => {
-                    // OWNER_ID env එකෙන් ලබා ගනී
                     if (userId.toString() === this.env.OWNER_ID.toString()) return; 
 
                     try {
