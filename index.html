@@ -66,6 +66,8 @@
             
             <h2 id="videoTitle" class="mt-2 mb-4 text-primary"></h2>
 
+            <img id="thumbnailImage" class="thumbnail-img d-none" alt="Video Thumbnail">
+
             <a id="downloadButton" href="#" class="btn btn-download text-white mt-4 mb-4" download>
                 Click to Download Video
             </a>
@@ -101,7 +103,6 @@
 </div>
 
 <script>
-    // formatCaption function එකේ logic එක සරල කර මෙහි භාවිතා කර ඇත.
     function formatDuration(seconds) {
         if (typeof seconds !== 'number' || seconds < 0) return 'N/A';
         const totalSeconds = Math.round(seconds); 
@@ -118,14 +119,13 @@
     document.addEventListener('DOMContentLoaded', function() {
         const params = new URLSearchParams(window.location.search);
         
-        // Base64 Encoded දත්ත ලබාගැනීම
         const encodedUrl = params.get('url');
         const encodedTitle = params.get('title');
         const encodedUploader = params.get('uploader');
         const encodedDuration = params.get('duration');
         const encodedViews = params.get('views');
         const encodedUploadDate = params.get('uploadDate');
-        // encodedThumbnail අවශ්‍ය නැත, මන්ද එය කෙලින්ම URL එකට යැවිය නොහැක.
+        const encodedThumbnailUrl = params.get('thumbnail'); // Thumbnail URL එක ලබා ගනී
         
         const downloadButton = document.getElementById('downloadButton');
         const videoTitleElement = document.getElementById('videoTitle');
@@ -137,11 +137,11 @@
         const durationText = document.getElementById('durationText');
         const viewsText = document.getElementById('viewsText');
         const uploadDateText = document.getElementById('uploadDateText');
+        const thumbnailImage = document.getElementById('thumbnailImage'); // Thumbnail Image element
         const pageTitle = document.getElementById('pageTitle');
 
         if (encodedUrl) {
             try {
-                // Base64 Decode
                 const decodedUrl = atob(encodedUrl);
                 const decodedTitle = encodedTitle ? atob(encodedTitle) : 'Facebook Video';
                 const decodedUploader = encodedUploader ? atob(encodedUploader) : 'Unknown Uploader';
@@ -149,11 +149,14 @@
                 const decodedViews = encodedViews ? parseInt(atob(encodedViews)).toLocaleString('en-US') : 'N/A';
                 
                 let decodedUploadDate = encodedUploadDate ? atob(encodedUploadDate) : 'N/A';
-                if (decodedUploadDate && /^\d{8}$/.test(decodedUploadDate)) {
+                if (decodedUploadDate && /^\d{4}-\d{2}-\d{2}$/.test(decodedUploadDate)) { // 2025-11-19 format එකට අනුකූලදැයි පරීක්ෂා කරයි
+                     // දත්ත එම format එකේම තිබේ නම්, එය එලෙසම තබමු.
+                } else if (decodedUploadDate && /^\d{8}$/.test(decodedUploadDate)) { // 20251119 format එකේ නම්
                     decodedUploadDate = decodedUploadDate.substring(0, 4) + '-' + decodedUploadDate.substring(4, 6) + '-' + decodedUploadDate.substring(6, 8);
                 }
 
-                // UI Update
+                const decodedThumbnailUrl = encodedThumbnailUrl ? atob(encodedThumbnailUrl) : ''; // Thumbnail URL Decode කරයි.
+
                 loadingState.classList.add('d-none');
                 videoDetails.classList.remove('d-none');
                 
@@ -161,12 +164,20 @@
                 pageTitle.textContent = `Download: ${decodedTitle}`;
                 
                 downloadButton.href = decodedUrl;
-                downloadButton.download = decodedTitle.replace(/[^a-z0-9]/gi, '_') + '.mp4'; // File name set
+                downloadButton.download = decodedTitle.replace(/[^a-z0-9]/gi, '_') + '.mp4'; 
 
                 uploaderText.textContent = decodedUploader;
                 durationText.textContent = decodedDuration;
                 viewsText.textContent = decodedViews;
                 uploadDateText.textContent = decodedUploadDate;
+
+                // Thumbnail URL එකක් තිබේ නම් එය පෙන්වයි
+                if (decodedThumbnailUrl && decodedThumbnailUrl !== 'N/A') {
+                    thumbnailImage.src = decodedThumbnailUrl;
+                    thumbnailImage.classList.remove('d-none');
+                } else {
+                    thumbnailImage.classList.add('d-none'); // Thumbnail නොමැතිනම් සඟවයි
+                }
 
             } catch (e) {
                 loadingState.classList.add('d-none');
@@ -176,7 +187,7 @@
             }
         } else {
             loadingState.classList.add('d-none');
-            videoTitleElement.textContent = "Welcome to the Bot Download Page.";
+            videoDetails.classList.add('d-none'); // videoDetails කොටසත් සඟවමු
             errorState.textContent = "Please use the Telegram Bot to generate a valid download link.";
             errorState.classList.remove('d-none');
         }
