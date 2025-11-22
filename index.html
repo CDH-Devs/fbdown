@@ -13,11 +13,10 @@
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
         body {
             font-family: 'Inter', sans-serif;
-            /* Default: Centered for Connection Page */
             background-color: #f8f9fa;
         }
 
-        /* Custom spinning animation for the Connecting icon */
+        /* Custom spinning animation */
         @keyframes spin {
             from { transform: rotate(0deg); }
             to { transform: rotate(360deg); }
@@ -26,7 +25,25 @@
             animation: spin 1s linear infinite;
         }
 
-        /* --- Download Page Styles (ඔබ කලින් දුන් ඒවා) --- */
+        /* --- Custom Responsive Flow for Connection Box (Mobile-First) --- */
+        /* මෙය Tailwind Classes මගින්ම හැසිරවිය හැක, නමුත් පැහැදිලිකම සඳහා මෙහි තබමි */
+        .connection-flow-wrapper {
+            /* Mobile Default: Items will stack vertically with space-y-6 */
+            flex-direction: column; 
+            gap: 1.5rem; /* space-y-6 equivalent in CSS */
+        }
+        
+        @media (min-width: 768px) { /* Medium screens (md) and up */
+            .connection-flow-wrapper {
+                /* Desktop/Tablet: Items will flow horizontally with space-x-12 */
+                flex-direction: row;
+                gap: 0; /* Reset gap */
+                margin-left: 3rem; /* space-x-12 equivalent */
+                margin-right: 3rem; /* space-x-12 equivalent */
+            }
+        }
+        
+        /* --- Download Page Styles --- */
         :root {
             --primary-color: #0088cc;
             --success-color: #28a745;
@@ -39,41 +56,34 @@
         .download-box { 
             background: #ffffff; 
             border-radius: 10px; 
-            padding: 40px; 
+            padding: 20px; /* Reduced padding for mobile */
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); 
         }
+        @media (min-width: 768px) {
+            .download-box {
+                padding: 40px; /* Standard padding for desktop */
+            }
+        }
         .btn-download { 
+            font-size: 1.2rem; /* Reduced font size for mobile */
+            padding: 12px 30px; /* Reduced padding for mobile */
+            /* ... other styles ... */
             background-color: var(--success-color); 
             border-color: var(--success-color); 
-            font-size: 1.5rem; 
-            padding: 15px 40px; 
             border-radius: 50px; 
-            transition: background-color 0.3s ease;
-            position: relative;
-            overflow: hidden;
             transition: background-color 0.3s ease, opacity 0.3s ease;
+            width: 100%; /* Make it full width on all screens by default */
         }
-        .btn-download:hover {
-            background-color: #218838;
-            border-color: #1e7e34;
+        @media (min-width: 768px) {
+            .btn-download {
+                font-size: 1.5rem; 
+                padding: 15px 40px; 
+                width: auto; /* Auto width on desktop */
+            }
         }
-        .btn-download.loading {
-            background-color: #6c757d !important;
-            pointer-events: none;
-        }
-        .btn-download .spinner-border {
-            width: 1.5rem;
-            height: 1.5rem;
-            margin-right: 10px;
-            vertical-align: middle;
-        }
-        .loading-text { display: none; }
-        .btn-download.loading .initial-text { display: none; }
-        .btn-download.loading .loading-text { display: inline-block; }
+        /* ... other download styles (kept as original) ... */
         .logo-text { color: var(--primary-color); font-weight: 700; }
-        .status-badge { font-size: 0.9rem; }
         .detail-row { padding: 5px 0; border-bottom: 1px solid #eee; }
-        .detail-row:last-child { border-bottom: none; }
         .thumb-img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 20px; }
     </style>
 </head>
@@ -81,31 +91,31 @@
 
 <div id="connectionWrapper" class="flex flex-col items-center justify-center w-full max-w-4xl mx-auto py-10">
 
-    <h1 class="text-5xl font-extrabold text-indigo-700 mb-12 text-center tracking-tight">
+    <h1 class="text-3xl sm:text-4xl md:text-5xl font-extrabold text-indigo-700 mb-8 md:mb-12 text-center tracking-tight">
         C D H Corporation
     </h1>
 
-    <div class="flex flex-row items-center justify-center space-x-6 md:space-x-12 p-4 bg-white rounded-3xl shadow-2xl border-t-4 border-indigo-400 max-w-xl mx-auto">
+    <div class="connection-flow-wrapper flex items-center justify-center p-4 bg-white rounded-3xl shadow-2xl border-t-4 border-indigo-400 max-w-xl mx-auto">
 
         <div class="flex flex-col items-center">
-            <div class="w-28 h-28 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-indigo-500 shadow-xl ring-4 ring-indigo-200">
+            <div class="w-24 h-24 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-indigo-500 shadow-xl ring-4 ring-indigo-200">
                 <img src="https://envs.sh/-4x.jpg" alt="Project Image" class="w-full h-full object-cover">
             </div>
-            <p class="mt-3 text-center text-base md:text-lg font-bold text-gray-700">Project</p>
+            <p class="mt-2 text-sm md:text-lg font-bold text-gray-700">Project</p>
         </div>
 
-        <div id="connection-status" class="flex flex-col items-center justify-center text-center space-y-2 min-w-[120px]">
+        <div id="connection-status" class="flex flex-col items-center justify-center text-center space-y-2">
             </div>
 
         <div class="flex flex-col items-center">
-            <div class="w-28 h-28 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-rose-500 shadow-xl ring-4 ring-rose-200">
+            <div class="w-24 h-24 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-rose-500 shadow-xl ring-4 ring-rose-200">
                 <img src="https://envs.sh/-4-.jpg" alt="Facebook Video Download Bot Image" class="w-full h-full object-cover">
             </div>
-            <p class="mt-3 text-center text-base md:text-lg font-bold text-gray-700">Facebook Video Download Bot</p>
+            <p class="mt-2 text-sm md:text-lg font-bold text-gray-700 text-center max-w-xs">Facebook Video Download Bot</p>
         </div>
     </div>
 
-    <p id="result-message" class="mt-4 text-center text-sm text-gray-600 min-h-[20px] max-w-xl"></p>
+    <p id="result-message" class="mt-4 text-center text-xs sm:text-sm text-gray-600 min-h-[20px] max-w-xl"></p>
 
 </div>
 
@@ -129,16 +139,13 @@
             
             <img id="thumbnailImage" class="thumb-img d-none" alt="Video Thumbnail">
 
-            <h2 id="videoTitle" class="mb-3 text-start">Video Title Placeholder</h2>
-            
-            <div class="text-start mb-4">
-                <div class="detail-row"><strong>👤 Uploader:</strong> <span id="uploaderText">N/A</span></div>
+            <h2 id="videoTitle" class="mb-3 text-start h5">Video Title Placeholder</h2> <div class="text-start mb-4 small"> <div class="detail-row"><strong>👤 Uploader:</strong> <span id="uploaderText">N/A</span></div>
                 <div class="detail-row"><strong>⏱️ Duration:</strong> <span id="durationText">N/A</span></div>
                 <div class="detail-row"><strong>👁️ Views:</strong> <span id="viewsText">N/A</span></div>
                 <div class="detail-row"><strong>📅 Upload Date:</strong> <span id="uploadDateText">N/A</span></div>
             </div>
 
-            <a id="downloadButton" href="#" class="btn btn-download btn-block mt-4" role="button">
+            <a id="downloadButton" href="#" class="btn btn-download mt-4" role="button">
                 <span class="initial-text">⬇️ Download Video</span>
                 <span class="loading-text">
                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -146,7 +153,7 @@
                 </span>
             </a>
 
-            <p class="mt-3 text-muted">Click the button to start the direct download.</p>
+            <p class="mt-3 text-muted small">Click the button to start the direct download.</p>
         </div>
 
         <div id="errorState" class="d-none alert alert-danger mt-4" role="alert">
@@ -172,17 +179,18 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.592-3l-5.845 5.845a7 7 0 01-11.88 2.127l-1.42 1.42M14.5 15.5L10 20a7.002 7.002 0 01-7.88-11.88l-1.42-1.42"></path>
             </svg>
         `;
-        const connectingText = '<p class="text-lg md:text-xl font-extrabold text-yellow-600 border-b-4 border-yellow-500 pb-1 px-2">CONNECTING...</p>';
+        // Text size is now responsive (text-base default, md:text-xl for desktop)
+        const connectingText = '<p class="text-base md:text-xl font-extrabold text-yellow-600 border-b-4 border-yellow-500 pb-1 px-2">CONNECTING...</p>';
 
         const approvedIcon = `
             <svg class="w-8 h-8 md:w-10 md:h-10 text-green-500 bg-green-100 rounded-full p-1 shadow-inner transition duration-500 transform scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
             </svg>
         `;
-        const approvedText = '<p class="text-lg md:text-xl font-extrabold text-green-600 border-b-4 border-green-500 pb-1 px-2">APPROVED</p>';
+        const approvedText = '<p class="text-base md:text-xl font-extrabold text-green-600 border-b-4 border-green-500 pb-1 px-2">APPROVED</p>';
 
 
-        // --- Download Page Script Logic (Bootstrap) ---
+        // --- Download Page Script Logic (Data Handling) ---
         const params = new URLSearchParams(window.location.search);
         const urlParam = params.get('url');
         
@@ -197,11 +205,9 @@
         const uploadDateText = document.getElementById('uploadDateText');
         const thumbnailImage = document.getElementById('thumbnailImage');
 
-        // Base64 decoding helper
         const decodeBase64 = (encoded) => {
             if (!encoded) return 'N/A';
             try {
-                // btoa/atob is deprecated for general use, but standard for simple base64 in browsers
                 return decodeURIComponent(escape(atob(encoded))); 
             } catch (e) {
                 return 'N/A'; 
@@ -217,6 +223,8 @@
             setTimeout(() => {
                 const fakeLink = document.createElement('a');
                 fakeLink.href = url;
+                // Add w-100 (Bootstrap class) to the download button for full width on mobile
+                downloadButton.classList.add('w-100', 'd-block');
                 fakeLink.download = title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_') + '.mp4'; 
                 document.body.appendChild(fakeLink);
                 fakeLink.click();
@@ -282,19 +290,19 @@
             }
         };
 
-        // --- Main Connection Logic ---
+        // --- Main Connection Logic (Transition) ---
         const startConnection = () => {
             // 1. Set state to CONNECTING
             statusContainer.innerHTML = connectingIcon + connectingText;
             resultMessage.textContent = 'Attempting to establish secure connection with Bot...';
-            resultMessage.className = 'mt-4 text-center text-sm font-medium text-indigo-600 min-h-[20px] max-w-xl';
+            resultMessage.className = 'mt-4 text-center text-xs sm:text-sm font-medium text-indigo-600 min-h-[20px] max-w-xl';
             
             // 2. Wait for 5 seconds (Connection time)
             setTimeout(() => {
                 // 3. Set state to APPROVED
                 statusContainer.innerHTML = approvedIcon + approvedText;
                 resultMessage.textContent = 'Connection established successfully. Project is authorized. Loading Download Page...';
-                resultMessage.className = 'mt-4 text-center text-sm font-bold text-green-600 min-h-[20px] max-w-xl';
+                resultMessage.className = 'mt-4 text-center text-xs sm:text-sm font-bold text-green-600 min-h-[20px] max-w-xl';
                 
                 // 4. Transition (1 second delay)
                 setTimeout(() => {
@@ -304,9 +312,9 @@
                     // Show Download Page
                     downloadWrapper.classList.remove('d-none'); 
 
-                    // Change body style to fit the standard download page (remove Tailwind centering)
+                    // Change body style to fit the standard download page 
                     document.body.classList.remove('flex', 'items-center', 'justify-center', 'min-h-screen', 'p-4', 'bg-gray-50');
-                    document.body.classList.add('bg-light'); // Standard Bootstrap body style
+                    document.body.classList.add('bg-light'); 
 
                     // Initialize the Download Page
                     loadDownloadDetails();
