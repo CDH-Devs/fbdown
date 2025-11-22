@@ -3,22 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title id="pageTitle">File Download - C D H Corporation</title>
+    <title id="pageTitle">CDH Project Connection</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <style>
+        /* Inter Font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Default background for connection page */
+            background-color: #f8f9fa; /* Bootstrap's light gray to match */
+        }
+        /* Custom spinning animation for the Connecting icon */
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .animate-spin-custom {
+            animation: spin 1s linear infinite;
+        }
+
+        /* --- Download Page Styles (ඔබ කලින් දුන් ඒවා) --- */
         :root {
             --primary-color: #0088cc; /* Telegram Blue */
             --success-color: #28a745;
         }
-        body { 
-            background-color: #f8f9fa; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-        }
-        .container { 
-            max-width: 800px; 
-            margin-top: 50px; 
-            margin-bottom: 50px;
-        }
+        /* Download page styles are kept, but the main body style will be overridden by the connection page's flex setup initially */
         .download-box { 
             background: #ffffff; 
             border-radius: 10px; 
@@ -32,19 +43,17 @@
             padding: 15px 40px; 
             border-radius: 50px; 
             transition: background-color 0.3s ease;
-            position: relative; /* අභ්‍යන්තර කොටස් පාලනයට */
+            position: relative;
             overflow: hidden;
-            /* බොත්තම ක්ලික් කිරීමෙන් පසු අළු පාටට හැරීම */
             transition: background-color 0.3s ease, opacity 0.3s ease;
         }
         .btn-download:hover {
             background-color: #218838;
             border-color: #1e7e34;
         }
-        /* Loading state CSS */
         .btn-download.loading {
-            background-color: #6c757d !important; /* අළු පැහැය */
-            pointer-events: none; /* නැවත ක්ලික් කිරීම වැළැක්වීම */
+            background-color: #6c757d !important;
+            pointer-events: none;
         }
         .btn-download .spinner-border {
             width: 1.5rem;
@@ -61,8 +70,6 @@
         .btn-download.loading .loading-text {
             display: inline-block;
         }
-
-        /* පෙර තිබූ අනෙකුත් CSS */
         .logo-text { color: var(--primary-color); font-weight: 700; }
         .status-badge { font-size: 0.9rem; }
         .detail-row { padding: 5px 0; border-bottom: 1px solid #eee; }
@@ -70,9 +77,52 @@
         .thumb-img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 20px; }
     </style>
 </head>
-<body>
+<body class="bg-gray-50 flex items-center justify-center min-h-screen p-4">
 
-<div class="container">
+<div id="connectionWrapper" class="flex flex-col items-center justify-center w-full max-w-4xl mx-auto py-10">
+
+    <h1 class="text-5xl font-extrabold text-indigo-700 mb-12 text-center tracking-tight">
+        C D H Corporation
+    </h1>
+
+    <div class="flex flex-row items-center justify-center space-x-6 md:space-x-12 p-4 bg-white rounded-3xl shadow-2xl border-t-4 border-indigo-400 max-w-xl mx-auto">
+
+        <div class="flex flex-col items-center">
+            <div class="w-28 h-28 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-indigo-500 shadow-xl transform hover:scale-105 transition duration-300 ring-4 ring-indigo-200">
+                <img src="https://placehold.co/400x400/4f46e5/ffffff?text=Project"
+                    alt="Project Image"
+                    class="w-full h-full object-cover"
+                    onerror="this.onerror=null; this.src='https://placehold.co/400x400/94a3b8/ffffff?text=Error';"
+                >
+            </div>
+            <p class="mt-3 text-center text-base md:text-lg font-bold text-gray-700">Project Image</p>
+        </div>
+
+        <div id="connection-status" class="flex flex-col items-center justify-center text-center space-y-2 min-w-[120px]">
+            </div>
+
+        <div class="flex flex-col items-center">
+            <div class="w-28 h-28 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-rose-500 shadow-xl transform hover:scale-105 transition duration-300 ring-4 ring-rose-200">
+                <img src="https://placehold.co/400x400/e11d48/ffffff?text=Bot"
+                    alt="Facebook Video Download Bot Image"
+                    class="w-full h-full object-cover"
+                    onerror="this.onerror=null; this.src='https://placehold.co/400x400/94a3b8/ffffff?text=Error';"
+                >
+            </div>
+            <p class="mt-3 text-center text-base md:text-lg font-bold text-gray-700">Bot Image</p>
+        </div>
+    </div>
+
+    <p class="mt-8 text-sm text-gray-500 max-w-xl text-center p-3 rounded-lg bg-gray-100 border border-gray-200">
+        Note: To display your actual images, please replace the placeholder URLs in the `src` attribute of the `<img>` tags with your provided image URLs.
+    </p>
+    
+    <p id="result-message" class="mt-4 text-center text-sm text-gray-600 min-h-[20px] max-w-xl"></p>
+
+</div>
+
+
+<div id="downloadWrapper" class="container d-none">
     <div class="download-box text-center">
         
         <h1 class="mb-4">
@@ -118,56 +168,83 @@
     </div>
 </div>
 
+
 <script>
-    document.addEventListener('DOMContentLoaded', () => {
-        const params = new URLSearchParams(window.location.search);
-        const urlParam = params.get('url');
-        
-        const loadingState = document.getElementById('loadingState');
-        const videoDetails = document.getElementById('videoDetails');
-        const errorState = document.getElementById('errorState');
-        const pageTitle = document.getElementById('pageTitle');
-        const videoTitle = document.getElementById('videoTitle');
-        const downloadButton = document.getElementById('downloadButton'); // බොත්තම
-        const uploaderText = document.getElementById('uploaderText');
-        const durationText = document.getElementById('durationText');
-        const viewsText = document.getElementById('viewsText');
-        const uploadDateText = document.getElementById('uploadDateText');
-        const thumbnailImage = document.getElementById('thumbnailImage');
+    // --- Connection Page Script Logic (පළමු පිටුව) ---
+    const statusContainer = document.getElementById('connection-status');
+    const resultMessage = document.getElementById('result-message');
+    const connectionWrapper = document.getElementById('connectionWrapper');
+    const downloadWrapper = document.getElementById('downloadWrapper');
+    
+    // Icons
+    const connectingIcon = `
+        <svg class="w-8 h-8 md:w-10 md:h-10 text-yellow-500 animate-spin-custom bg-yellow-100 rounded-full p-1 shadow-inner" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.592-3l-5.845 5.845a7 7 0 01-11.88 2.127l-1.42 1.42M14.5 15.5L10 20a7.002 7.002 0 01-7.88-11.88l-1.42-1.42"></path>
+        </svg>
+    `;
+    const connectingText = '<p class="text-lg md:text-xl font-extrabold text-yellow-600 border-b-4 border-yellow-500 pb-1 px-2">CONNECTING...</p>';
 
-        // Base64 decoding helper
-        const decodeBase64 = (encoded) => {
-            if (!encoded) return 'N/A';
+    const approvedIcon = `
+        <svg class="w-8 h-8 md:w-10 md:h-10 text-green-500 bg-green-100 rounded-full p-1 shadow-inner transition duration-500 transform scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+        </svg>
+    `;
+    const approvedText = '<p class="text-lg md:text-xl font-extrabold text-green-600 border-b-4 border-green-500 pb-1 px-2">APPROVED</p>';
+    
+    // --- Download Page Script Logic (දෙවන පිටුව) ---
+    const params = new URLSearchParams(window.location.search);
+    const urlParam = params.get('url');
+    
+    const loadingState = document.getElementById('loadingState');
+    const videoDetails = document.getElementById('videoDetails');
+    const errorState = document.getElementById('errorState');
+    const pageTitle = document.getElementById('pageTitle');
+    const videoTitle = document.getElementById('videoTitle');
+    const downloadButton = document.getElementById('downloadButton');
+    const uploaderText = document.getElementById('uploaderText');
+    const durationText = document.getElementById('durationText');
+    const viewsText = document.getElementById('viewsText');
+    const uploadDateText = document.getElementById('uploadDateText');
+    const thumbnailImage = document.getElementById('thumbnailImage');
+
+    // Base64 decoding helper
+    const decodeBase64 = (encoded) => {
+        if (!encoded) return 'N/A';
+        try {
             return decodeURIComponent(escape(atob(encoded)));
-        };
+        } catch (e) {
+            console.error("Base64 decoding failed for:", encoded, e);
+            return 'N/A'; // Fail gracefully
+        }
+    };
+    
+    let decodedUrl = ''; 
+    let decodedTitle = 'file';
+
+    const initiateDownload = (url, title) => {
+        // 1. Loading State එක activate කිරීම
+        downloadButton.classList.add('loading');
         
-        // **SMART DOWNLOAD LOGIC**
-        let decodedUrl = ''; 
-        let decodedTitle = 'file';
+        // 2. තත්පර 2ක ප්‍රමාදයක් (Delay) ලබා දීම
+        setTimeout(() => {
+            // 3. සැබෑ බාගත කිරීම ආරම්භ කිරීම
+            const fakeLink = document.createElement('a');
+            fakeLink.href = url;
+            // .mp4 එකතු කරන්නේ title එකට පමණක් වන නිසා, filename එක clean කරමු.
+            fakeLink.download = title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_') + '.mp4'; 
+            document.body.appendChild(fakeLink);
+            fakeLink.click();
+            document.body.removeChild(fakeLink);
 
-        const initiateDownload = (url, title) => {
-            // 1. Loading State එක activate කිරීම
-            downloadButton.classList.add('loading');
-            
-            // 2. තත්පර 2ක ප්‍රමාදයක් (Delay) ලබා දීම - මෙය "Smart" පෙනුම සඳහා
-            setTimeout(() => {
-                // 3. සැබෑ බාගත කිරීම ආරම්භ කිරීම
-                const fakeLink = document.createElement('a');
-                fakeLink.href = url;
-                fakeLink.download = title.replace(/[^a-z0-9]/gi, '_') + '.mp4'; 
-                document.body.appendChild(fakeLink);
-                fakeLink.click();
-                document.body.removeChild(fakeLink);
+            // 4. Loading State එක ඉවත් කිරීම සහ බොත්තම Disable කිරීම
+            downloadButton.classList.remove('loading');
+            downloadButton.innerHTML = '✅ Download Started';
+            downloadButton.style.backgroundColor = '#198754'; // Success Green
+            downloadButton.onclick = (e) => { e.preventDefault(); };
+        }, 2000); // 2000ms = තත්පර 2ක්
+    };
 
-                // 4. Loading State එක ඉවත් කිරීම සහ බොත්තම Disable කිරීම
-                downloadButton.classList.remove('loading');
-                downloadButton.textContent = '✅ Download Started';
-                downloadButton.style.backgroundColor = '#198754'; // Success Green
-                downloadButton.onclick = (e) => { e.preventDefault(); }; // නැවත ක්ලික් කිරීම නවත්වයි
-
-            }, 2000); // 2000ms = තත්පර 2ක්
-        };
-
+    const loadDownloadDetails = () => {
         if (urlParam) {
             try {
                 // ... Decode සියලු parameters ...
@@ -184,7 +261,7 @@
                 videoDetails.classList.remove('d-none');
                 
                 videoTitle.textContent = decodedTitle;
-                pageTitle.textContent = `Download: ${decodedTitle}`;
+                // pageTitle.textContent = `Download: ${decodedTitle}`; // Connection page title is temporary
                 
                 uploaderText.textContent = decodedUploader;
                 durationText.textContent = decodedDuration;
@@ -198,10 +275,10 @@
                     thumbnailImage.classList.add('d-none');
                 }
 
-                // **බොත්තම සකස් කිරීම** - සෘජු href වෙනුවට click event එක යොදයි
-                downloadButton.href = "#"; // සෘජු බාගත කිරීම වළක්වයි
+                // **බොත්තම සකස් කිරීම**
+                downloadButton.href = "#";
                 downloadButton.onclick = (e) => {
-                    e.preventDefault(); // Default click action වළක්වයි
+                    e.preventDefault();
                     initiateDownload(decodedUrl, decodedTitle);
                 };
                 
@@ -210,6 +287,7 @@
                 loadingState.classList.add('d-none');
                 errorState.classList.remove('d-none');
                 pageTitle.textContent = "Error Loading Link";
+                errorState.textContent = "❌ Error: Could not decode the download link details.";
                 console.error("Decoding error:", e);
             }
         } else {
@@ -219,7 +297,43 @@
             errorState.textContent = "Please use the Telegram Bot to generate a valid download link.";
             errorState.classList.remove('d-none');
         }
-    });
+    };
+
+    // --- Main Connection Logic ---
+    const startConnection = () => {
+        // 1. Set state to CONNECTING
+        statusContainer.innerHTML = connectingIcon + connectingText;
+        resultMessage.textContent = 'Attempting to establish secure connection...';
+        resultMessage.className = 'mt-4 text-center text-sm font-medium text-indigo-600 min-h-[20px] max-w-xl';
+        
+        // 2. Wait for 5 seconds (5000 milliseconds)
+        setTimeout(() => {
+            // 3. Set state to APPROVED
+            statusContainer.innerHTML = approvedIcon + approvedText;
+            resultMessage.textContent = 'Connection established successfully. Project is authorized. Redirecting...';
+            resultMessage.className = 'mt-4 text-center text-sm font-bold text-green-600 min-h-[20px] max-w-xl';
+            
+            // 4. Hide Connection Page and show Download Page
+            setTimeout(() => {
+                connectionWrapper.classList.add('d-none'); // Tailwind class
+                downloadWrapper.classList.remove('d-none'); // Bootstrap class
+
+                // Adjust body class for the download page layout
+                document.body.classList.remove('flex', 'items-center', 'justify-center', 'min-h-screen', 'p-4', 'bg-gray-50');
+                document.body.classList.add('bg-light'); // Bootstrap body style
+
+                // Now initialize the Download Page details
+                loadDownloadDetails();
+                
+                // Update page title to reflect download content
+                pageTitle.textContent = urlParam ? `Download: ${decodedTitle}` : 'File Download - C D H Corporation';
+
+            }, 1000); // Wait 1 second after 'Approved' to transition
+        }, 5000); // 5 seconds connection time
+    };
+
+    // Start the connection process when the page finishes loading
+    window.onload = startConnection;
 </script>
 
 </body>
