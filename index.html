@@ -25,25 +25,23 @@
             animation: spin 1s linear infinite;
         }
 
-        /* --- Custom Responsive Flow for Connection Box (Mobile-First) --- */
-        /* මෙය Tailwind Classes මගින්ම හැසිරවිය හැක, නමුත් පැහැදිලිකම සඳහා මෙහි තබමි */
+        /* --- Connection Flow Wrapper (Responsive) --- */
         .connection-flow-wrapper {
-            /* Mobile Default: Items will stack vertically with space-y-6 */
+            /* Mobile Default: Stacks Vertically */
             flex-direction: column; 
-            gap: 1.5rem; /* space-y-6 equivalent in CSS */
+            gap: 1.5rem; 
         }
         
-        @media (min-width: 768px) { /* Medium screens (md) and up */
+        @media (min-width: 768px) { /* Desktop/Tablet: Flows Horizontally */
             .connection-flow-wrapper {
-                /* Desktop/Tablet: Items will flow horizontally with space-x-12 */
                 flex-direction: row;
-                gap: 0; /* Reset gap */
-                margin-left: 3rem; /* space-x-12 equivalent */
-                margin-right: 3rem; /* space-x-12 equivalent */
+                gap: 0; 
+                margin-left: 3rem; 
+                margin-right: 3rem; 
             }
         }
         
-        /* --- Download Page Styles --- */
+        /* --- Download Page Styles (Responsive Adjustments) --- */
         :root {
             --primary-color: #0088cc;
             --success-color: #28a745;
@@ -56,33 +54,46 @@
         .download-box { 
             background: #ffffff; 
             border-radius: 10px; 
-            padding: 20px; /* Reduced padding for mobile */
+            padding: 20px; /* Mobile Padding */
             box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1); 
         }
         @media (min-width: 768px) {
             .download-box {
-                padding: 40px; /* Standard padding for desktop */
+                padding: 40px; /* Desktop Padding */
             }
         }
         .btn-download { 
-            font-size: 1.2rem; /* Reduced font size for mobile */
-            padding: 12px 30px; /* Reduced padding for mobile */
-            /* ... other styles ... */
             background-color: var(--success-color); 
             border-color: var(--success-color); 
+            font-size: 1.2rem; /* Mobile Font Size */
+            padding: 12px 30px; 
             border-radius: 50px; 
             transition: background-color 0.3s ease, opacity 0.3s ease;
-            width: 100%; /* Make it full width on all screens by default */
+            width: 100%; /* Full Width on Mobile */
         }
         @media (min-width: 768px) {
             .btn-download {
-                font-size: 1.5rem; 
+                font-size: 1.5rem; /* Desktop Font Size */
                 padding: 15px 40px; 
-                width: auto; /* Auto width on desktop */
+                width: auto; /* Auto Width on Desktop/Tablet */
             }
         }
-        /* ... other download styles (kept as original) ... */
+        .btn-download:hover { background-color: #218838; border-color: #1e7e34; }
+        .btn-download.loading {
+            background-color: #6c757d !important;
+            pointer-events: none;
+        }
+        .btn-download .spinner-border {
+            width: 1.5rem;
+            height: 1.5rem;
+            margin-right: 10px;
+            vertical-align: middle;
+        }
+        .loading-text { display: none; }
+        .btn-download.loading .initial-text { display: none; }
+        .btn-download.loading .loading-text { display: inline-block; }
         .logo-text { color: var(--primary-color); font-weight: 700; }
+        .status-badge { font-size: 0.9rem; }
         .detail-row { padding: 5px 0; border-bottom: 1px solid #eee; }
         .thumb-img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 20px; }
     </style>
@@ -109,7 +120,7 @@
 
         <div class="flex flex-col items-center">
             <div class="w-24 h-24 sm:w-28 sm:h-28 md:w-36 md:h-36 rounded-full overflow-hidden border-4 border-rose-500 shadow-xl ring-4 ring-rose-200">
-                <img src="https://envs.sh/-4-.jpg" alt="Facebook Video Download Bot Image" class="w-full h-full object-cover">
+                 <img src="https://envs.sh/-4-.jpg" alt="Facebook Video Download Bot Image" class="w-full h-full object-cover">
             </div>
             <p class="mt-2 text-sm md:text-lg font-bold text-gray-700 text-center max-w-xs">Facebook Video Download Bot</p>
         </div>
@@ -119,6 +130,7 @@
 
 </div>
 
+---
 
 <div id="downloadWrapper" class="container download-page-container d-none">
     <div class="download-box text-center">
@@ -139,13 +151,16 @@
             
             <img id="thumbnailImage" class="thumb-img d-none" alt="Video Thumbnail">
 
-            <h2 id="videoTitle" class="mb-3 text-start h5">Video Title Placeholder</h2> <div class="text-start mb-4 small"> <div class="detail-row"><strong>👤 Uploader:</strong> <span id="uploaderText">N/A</span></div>
+            <h2 id="videoTitle" class="mb-3 text-start h5">Video Title Placeholder</h2>
+            
+            <div class="text-start mb-4 small">
+                <div class="detail-row"><strong>👤 Uploader:</strong> <span id="uploaderText">N/A</span></div>
                 <div class="detail-row"><strong>⏱️ Duration:</strong> <span id="durationText">N/A</span></div>
                 <div class="detail-row"><strong>👁️ Views:</strong> <span id="viewsText">N/A</span></div>
                 <div class="detail-row"><strong>📅 Upload Date:</strong> <span id="uploadDateText">N/A</span></div>
             </div>
 
-            <a id="downloadButton" href="#" class="btn btn-download mt-4" role="button">
+            <a id="downloadButton" href="#" class="btn btn-download w-100 mt-4" role="button">
                 <span class="initial-text">⬇️ Download Video</span>
                 <span class="loading-text">
                     <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -163,6 +178,7 @@
     </div>
 </div>
 
+---
 
 <script>
     document.addEventListener('DOMContentLoaded', () => {
@@ -179,7 +195,6 @@
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M4 4v5h.582m15.592-3l-5.845 5.845a7 7 0 01-11.88 2.127l-1.42 1.42M14.5 15.5L10 20a7.002 7.002 0 01-7.88-11.88l-1.42-1.42"></path>
             </svg>
         `;
-        // Text size is now responsive (text-base default, md:text-xl for desktop)
         const connectingText = '<p class="text-base md:text-xl font-extrabold text-yellow-600 border-b-4 border-yellow-500 pb-1 px-2">CONNECTING...</p>';
 
         const approvedIcon = `
@@ -205,6 +220,7 @@
         const uploadDateText = document.getElementById('uploadDateText');
         const thumbnailImage = document.getElementById('thumbnailImage');
 
+        // Base64 Decoding Function
         const decodeBase64 = (encoded) => {
             if (!encoded) return 'N/A';
             try {
@@ -217,22 +233,30 @@
         let decodedUrl = ''; 
         let decodedTitle = 'file';
 
+        // 🟢 Download Initiation Function (Error Fixed) 🟢
         const initiateDownload = (url, title) => {
+            // 1. Loading State
             downloadButton.classList.add('loading');
+            downloadButton.classList.add('w-100'); 
+
             
+            // 2. Start Download after delay
             setTimeout(() => {
+                
+                // 3. Trigger Download Link
                 const fakeLink = document.createElement('a');
                 fakeLink.href = url;
-                // Add w-100 (Bootstrap class) to the download button for full width on mobile
-                downloadButton.classList.add('w-100', 'd-block');
                 fakeLink.download = title.replace(/[^a-z0-9\s]/gi, '_').replace(/\s+/g, '_') + '.mp4'; 
                 document.body.appendChild(fakeLink);
                 fakeLink.click();
                 document.body.removeChild(fakeLink);
 
+                // 4. Change button state to Success
                 downloadButton.classList.remove('loading');
                 downloadButton.innerHTML = '✅ Download Started';
                 downloadButton.style.backgroundColor = '#198754';
+                
+                // 5. Prevent subsequent clicks
                 downloadButton.onclick = (e) => { e.preventDefault(); };
             }, 2000); // 2 seconds delay
         };
@@ -270,6 +294,8 @@
 
                     // Setup download button
                     downloadButton.href = "#";
+                    downloadButton.classList.add('w-100'); 
+
                     downloadButton.onclick = (e) => {
                         e.preventDefault();
                         initiateDownload(decodedUrl, decodedTitle);
@@ -292,19 +318,15 @@
 
         // --- Main Connection Logic (Transition) ---
         const startConnection = () => {
-            // 1. Set state to CONNECTING
             statusContainer.innerHTML = connectingIcon + connectingText;
             resultMessage.textContent = 'Attempting to establish secure connection with Bot...';
             resultMessage.className = 'mt-4 text-center text-xs sm:text-sm font-medium text-indigo-600 min-h-[20px] max-w-xl';
             
-            // 2. Wait for 5 seconds (Connection time)
             setTimeout(() => {
-                // 3. Set state to APPROVED
                 statusContainer.innerHTML = approvedIcon + approvedText;
                 resultMessage.textContent = 'Connection established successfully. Project is authorized. Loading Download Page...';
                 resultMessage.className = 'mt-4 text-center text-xs sm:text-sm font-bold text-green-600 min-h-[20px] max-w-xl';
                 
-                // 4. Transition (1 second delay)
                 setTimeout(() => {
                     // Hide Connection Page
                     connectionWrapper.classList.add('d-none'); 
@@ -312,15 +334,13 @@
                     // Show Download Page
                     downloadWrapper.classList.remove('d-none'); 
 
-                    // Change body style to fit the standard download page 
+                    // Adjust body classes for the download page
                     document.body.classList.remove('flex', 'items-center', 'justify-center', 'min-h-screen', 'p-4', 'bg-gray-50');
                     document.body.classList.add('bg-light'); 
 
-                    // Initialize the Download Page
                     loadDownloadDetails();
-
-                }, 1000); // 1 second transition delay
-            }, 5000); // 5 seconds connection time
+                }, 1000); 
+            }, 5000); 
         };
 
         // Start the process
