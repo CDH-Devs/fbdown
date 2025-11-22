@@ -1,6 +1,4 @@
-import { API_URL } from './config';
-
-async function getApiMetadata(link) {
+async function getApiMetadata(link, API_URL) {
     try {
         const apiResponse = await fetch(API_URL, {
             method: 'POST',
